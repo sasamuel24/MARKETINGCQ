@@ -1,0 +1,2 @@
+# Placeholder - Las migraciones se generarán automáticamente con:
+# alembic revision --autogenerate -m "descripción"
