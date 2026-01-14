@@ -12,6 +12,11 @@ from core.middleware import setup_middlewares
 # Importar routers
 from modules.auth.router import router as auth_router
 from modules.health.router import router as health_router
+from modules.roles.router import router as roles_router
+from modules.areas.router import router as areas_router
+from modules.usuarios.router import router as usuarios_router
+from modules.estados.router import router as estados_router
+from modules.etapas.router import router as etapas_router
 
 
 # Crear instancia de FastAPI
@@ -31,6 +36,11 @@ setup_middlewares(app)
 # Registrar routers
 app.include_router(auth_router, prefix=settings.API_PREFIX)
 app.include_router(health_router, prefix=settings.API_PREFIX)
+app.include_router(roles_router, prefix=settings.API_PREFIX)
+app.include_router(areas_router, prefix=settings.API_PREFIX)
+app.include_router(usuarios_router, prefix=settings.API_PREFIX)
+app.include_router(estados_router, prefix=settings.API_PREFIX)
+app.include_router(etapas_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/", include_in_schema=False)

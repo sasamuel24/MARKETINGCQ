@@ -1,9 +1,10 @@
 """
-Repositorio base con operaciones CRUD genéricas
+Repositorio base con operaciones CRUD genéricas y modelos SQLAlchemy
 """
+import enum
 from typing import Generic, TypeVar, Type, Optional, List, Any, Dict
-from sqlalchemy.orm import Session
-from sqlalchemy import select, update, delete
+from sqlalchemy.orm import Session, relationship
+from sqlalchemy import select, update, delete, Column, String, Integer, ForeignKey, Boolean, UniqueConstraint, Index, Enum
 
 from db.base import Base
 
@@ -121,3 +122,120 @@ class BaseRepository(Generic[ModelType]):
         Verificar si existe un registro por ID
         """
         return self.db.query(self.model).filter(self.model.id == id).count() > 0
+
+
+# ============================================================================
+# MODELOS DE BASE DE DATOS
+# ============================================================================
+
+class Role(Base):
+    """
+    Modelo para la tabla de roles de usuarios
+    """
+    __tablename__ = "roles"
+    
+    nombre = Column(String(120), nullable=False, unique=True, index=True)
+    
+    # Relación con usuarios
+    users = relationship("User", back_populates="rol")
+    
+    def __repr__(self) -> str:
+        return f"<Role(id={self.id}, nombre='{self.nombre}')>"
+
+
+class Area(Base):
+    """
+    Modelo para la tabla de áreas
+    """
+    __tablename__ = "areas"
+    
+    nombre = Column(String(120), nullable=False, unique=True, index=True)
+    
+    # Relación con usuarios
+    users = relationship("User", back_populates="area")
+    
+    # Relación con etapas
+    etapas = relationship("Etapa", back_populates="area")
+    
+    def __repr__(self) -> str:
+        return f"<Area(id={self.id}, nombre='{self.nombre}')>"
+
+
+class User(Base):
+    """
+    Modelo para la tabla de usuarios
+    """
+    __tablename__ = "usuarios"
+    
+    full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255), nullable=False)
+    
+    # Foreign Keys
+    rol_id = Column(Integer, ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False, index=True)
+    area_id = Column(Integer, ForeignKey("areas.id", ondelete="RESTRICT"), nullable=False, index=True)
+    
+    # Relaciones
+    rol = relationship("Role", back_populates="users")
+    area = relationship("Area", back_populates="users")
+    
+    def __repr__(self) -> str:
+        return f"<User(id={self.id}, email='{self.email}', full_name='{self.full_name}')>"
+
+
+class Estado(Base):
+    """
+    Modelo para la tabla de estados del flujo de trabajo
+    """
+    __tablename__ = "estados"
+    
+    code = Column(String(50), nullable=False, unique=True, index=True)
+    label = Column(String(120), nullable=False)
+    order = Column(Integer, nullable=False)
+    is_final = Column(Boolean, nullable=False, server_default='false')
+    is_active = Column(Boolean, nullable=False, server_default='true')
+    
+    __table_args__ = (
+        UniqueConstraint('code', name='uq_estados_code'),
+    )
+    
+    def __repr__(self) -> str:
+        return f"<Estado(id={self.id}, code='{self.code}', label='{self.label}', order={self.order})>"
+
+
+class ApprovalMode(str, enum.Enum):
+    """
+    Enum para el modo de aprobación de una etapa
+    """
+    ANY = "ANY"  # Cualquier aprobador puede aprobar
+    ALL = "ALL"  # Todos los aprobadores deben aprobar
+
+
+class Etapa(Base):
+    """
+    Modelo para la tabla de etapas del flujo de trabajo por área
+    """
+    __tablename__ = "etapas"
+    
+    # Foreign Key
+    area_id = Column(Integer, ForeignKey("areas.id", ondelete="RESTRICT"), nullable=False, index=True)
+    
+    # Campos
+    code = Column(String(50), nullable=False)
+    label = Column(String(120), nullable=False)
+    order = Column("order", Integer, nullable=False)  # Especificar nombre de columna explícitamente
+    is_active = Column(Boolean, nullable=False, server_default='true')
+    approval_mode = Column(Enum(ApprovalMode), nullable=False, server_default='ANY')
+    
+    # Relación
+    area = relationship("Area", back_populates="etapas")
+    
+    __table_args__ = (
+        UniqueConstraint('area_id', 'code', name='uq_etapas_area_code'),
+        UniqueConstraint('area_id', 'order', name='uq_etapas_area_order'),
+        Index('ix_etapas_area_code', 'area_id', 'code'),
+        Index('ix_etapas_area_order', 'area_id', 'order'),
+    )
+    
+    def __repr__(self) -> str:
+        return f"<Etapa(id={self.id}, area_id={self.area_id}, code='{self.code}', label='{self.label}', order={self.order})>"
