@@ -17,6 +17,9 @@ from modules.areas.router import router as areas_router
 from modules.usuarios.router import router as usuarios_router
 from modules.estados.router import router as estados_router
 from modules.etapas.router import router as etapas_router
+from modules.etapa_aprobadores.router import router as etapa_aprobadores_router
+from modules.solicitudes.router import router as solicitudes_router
+from modules.solicitud_files.router import router as solicitud_files_router
 
 
 # Crear instancia de FastAPI
@@ -41,6 +44,9 @@ app.include_router(areas_router, prefix=settings.API_PREFIX)
 app.include_router(usuarios_router, prefix=settings.API_PREFIX)
 app.include_router(estados_router, prefix=settings.API_PREFIX)
 app.include_router(etapas_router, prefix=settings.API_PREFIX)
+app.include_router(etapa_aprobadores_router, prefix=settings.API_PREFIX)
+app.include_router(solicitudes_router, prefix=settings.API_PREFIX)
+app.include_router(solicitud_files_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/", include_in_schema=False)
