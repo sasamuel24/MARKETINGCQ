@@ -1,9 +1,22 @@
 """
 Schemas para solicitudes - Validación con Pydantic
 """
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
+
+
+class FileInSolicitud(BaseModel):
+    """Schema simplificado de archivo dentro de solicitud"""
+    id: int
+    filename: str
+    content_type: str
+    size_bytes: int
+    doc_type: str
+    storage_path: str
+    created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AreaInSolicitud(BaseModel):
@@ -118,6 +131,7 @@ class SolicitudDetailResponse(SolicitudResponse):
     stage: StageInSolicitud = Field(..., description="Información de la etapa")
     state: StateInSolicitud = Field(..., description="Información del estado")
     created_by: CreatedByInSolicitud = Field(..., description="Información del usuario creador")
+    files: List[FileInSolicitud] = Field(default_factory=list, description="Archivos adjuntos")
     
     model_config = ConfigDict(
         from_attributes=True,

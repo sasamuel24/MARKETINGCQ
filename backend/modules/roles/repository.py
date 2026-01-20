@@ -151,3 +151,20 @@ class RoleRepository:
         if exclude_id is not None:
             query = query.filter(Role.id != exclude_id)
         return query.count() > 0
+    
+    def has_users(self, role_id: int) -> bool:
+        """
+        Verificar si un rol tiene usuarios asociados
+        
+        Args:
+            role_id: ID del rol
+            
+        Returns:
+            True si tiene usuarios, False si no
+        """
+        role = self.get_by_id(role_id)
+        if not role:
+            return False
+        
+        # Verificar si hay usuarios con este rol
+        return len(role.users) > 0

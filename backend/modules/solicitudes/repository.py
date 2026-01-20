@@ -21,7 +21,7 @@ class SolicitudRepository:
         
         Args:
             solicitud_id: ID de la solicitud
-            include_relations: Si True, incluye área, etapa, estado y usuario creador
+            include_relations: Si True, incluye área, etapa, estado, usuario creador y archivos
             
         Returns:
             Solicitud encontrada o None
@@ -32,7 +32,8 @@ class SolicitudRepository:
                 joinedload(Solicitud.area),
                 joinedload(Solicitud.stage),
                 joinedload(Solicitud.state),
-                joinedload(Solicitud.created_by)
+                joinedload(Solicitud.created_by),
+                joinedload(Solicitud.files)
             )
         return query.filter(Solicitud.id == solicitud_id).first()
     
@@ -67,7 +68,8 @@ class SolicitudRepository:
                 joinedload(Solicitud.area),
                 joinedload(Solicitud.stage),
                 joinedload(Solicitud.state),
-                joinedload(Solicitud.created_by)
+                joinedload(Solicitud.created_by),
+                joinedload(Solicitud.files)
             )
         if area_id:
             query = query.filter(Solicitud.area_id == area_id)

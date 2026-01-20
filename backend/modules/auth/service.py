@@ -55,6 +55,7 @@ class AuthService:
             "id": str(user.id),
             "email": user.email,
             "full_name": user.full_name,
+            "role": user.rol.nombre if user.rol else "user",
             "rol_id": user.rol_id,
             "area_id": user.area_id
         }
@@ -136,6 +137,7 @@ class AuthService:
             "id": str(user.id),
             "email": user.email,
             "full_name": user.full_name,
+            "role": user.rol.nombre if user.rol else "user",
             "rol_id": user.rol_id,
             "area_id": user.area_id
         }

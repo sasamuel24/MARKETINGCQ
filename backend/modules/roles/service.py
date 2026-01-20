@@ -131,8 +131,22 @@ class RoleService:
             role_id: ID del rol a eliminar
             
         Raises:
-            HTTPException: Si el rol no existe
+            HTTPException: Si el rol no existe o tiene usuarios asociados
         """
+        # Verificar que el rol existe
+        if not self.repository.exists(role_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Rol con ID {role_id} no encontrado"
+            )
+        
+        # Verificar que no tenga usuarios asociados
+        if self.repository.has_users(role_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No se puede eliminar el rol porque tiene usuarios asociados. Primero reasigne los usuarios a otro rol."
+            )
+        
         if not self.repository.delete(role_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

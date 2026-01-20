@@ -50,7 +50,7 @@ class UserResponse(BaseModel):
     email: str = Field(..., description="Email del usuario")
     full_name: Optional[str] = Field(None, description="Nombre completo")
     role: str = Field(..., description="Rol del usuario")
-    is_active: bool = Field(..., description="Si el usuario está activo")
+    is_active: bool = Field(default=True, description="Si el usuario está activo")
     
     model_config = {
         "from_attributes": True,
