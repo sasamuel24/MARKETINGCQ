@@ -5,7 +5,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
-from db.models import Solicitud
+from db.models import Solicitud, EtapaAprobador
 from modules.solicitudes.schemas import SolicitudCreate, SolicitudUpdate
 
 
@@ -45,6 +45,7 @@ class SolicitudRepository:
         stage_id: Optional[int] = None,
         status_id: Optional[int] = None,
         created_by_user_id: Optional[int] = None,
+        approver_user_id: Optional[int] = None,
         include_relations: bool = True
     ) -> List[Solicitud]:
         """
@@ -57,6 +58,7 @@ class SolicitudRepository:
             stage_id: Filtrar por etapa (opcional)
             status_id: Filtrar por estado (opcional)
             created_by_user_id: Filtrar por usuario creador (opcional)
+            approver_user_id: Filtrar por usuario aprobador (opcional)
             include_relations: Si True, incluye relaciones
             
         Returns:
@@ -79,6 +81,10 @@ class SolicitudRepository:
             query = query.filter(Solicitud.status_id == status_id)
         if created_by_user_id:
             query = query.filter(Solicitud.created_by_user_id == created_by_user_id)
+        if approver_user_id:
+            query = query.join(EtapaAprobador, EtapaAprobador.etapa_id == Solicitud.stage_id)\
+                         .filter(EtapaAprobador.user_id == approver_user_id)\
+                         .filter(EtapaAprobador.is_active == True)
         
         return query.order_by(Solicitud.created_at.desc()).offset(skip).limit(limit).all()
     
@@ -87,7 +93,8 @@ class SolicitudRepository:
         area_id: Optional[int] = None,
         stage_id: Optional[int] = None,
         status_id: Optional[int] = None,
-        created_by_user_id: Optional[int] = None
+        created_by_user_id: Optional[int] = None,
+        approver_user_id: Optional[int] = None
     ) -> int:
         """
         Contar solicitudes con filtros
@@ -97,6 +104,7 @@ class SolicitudRepository:
             stage_id: Filtrar por etapa (opcional)
             status_id: Filtrar por estado (opcional)
             created_by_user_id: Filtrar por usuario creador (opcional)
+            approver_user_id: Filtrar por usuario aprobador (opcional)
             
         Returns:
             Número de solicitudes
@@ -110,6 +118,10 @@ class SolicitudRepository:
             query = query.filter(Solicitud.status_id == status_id)
         if created_by_user_id:
             query = query.filter(Solicitud.created_by_user_id == created_by_user_id)
+        if approver_user_id:
+            query = query.join(EtapaAprobador, EtapaAprobador.etapa_id == Solicitud.stage_id)\
+                         .filter(EtapaAprobador.user_id == approver_user_id)\
+                         .filter(EtapaAprobador.is_active == True)
         
         return query.count()
     

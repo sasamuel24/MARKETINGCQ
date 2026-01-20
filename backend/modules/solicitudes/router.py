@@ -33,8 +33,9 @@ async def get_solicitudes(
     stage_id: Optional[int] = Query(None, description="Filtrar por etapa"),
     status_id: Optional[int] = Query(None, description="Filtrar por estado"),
     created_by_user_id: Optional[int] = Query(None, description="Filtrar por usuario creador"),
+    check_approver: bool = Query(False, description="Si es True, filtra solicitudes donde el usuario actual es aprobador"),
     service: SolicitudService = Depends(get_solicitud_service),
-    _: str = Depends(get_current_user_id)  # Requiere autenticación
+    current_user_id: str = Depends(get_current_user_id)  # Requiere autenticación
 ):
     """
     Obtener lista de solicitudes con paginación y filtros
@@ -45,19 +46,24 @@ async def get_solicitudes(
     - **stage_id**: Filtrar por etapa específica (opcional)
     - **status_id**: Filtrar por estado específico (opcional)
     - **created_by_user_id**: Filtrar por usuario creador (opcional)
+    - **check_approver**: Si es True, retorna solo solicitudes donde el usuario actual es aprobador de la etapa actual
     
     Las solicitudes se retornan ordenadas por fecha de creación descendente.
     Incluye información completa de área, etapa (stage), estado (state) y usuario creador.
     Requiere autenticación.
     """
     skip = (page - 1) * page_size
+    
+    approver_user_id = int(current_user_id) if check_approver else None
+    
     solicitudes, total = service.get_all_solicitudes(
         skip=skip, 
         limit=page_size,
         area_id=area_id,
         stage_id=stage_id,
         status_id=status_id,
-        created_by_user_id=created_by_user_id
+        created_by_user_id=created_by_user_id,
+        approver_user_id=approver_user_id
     )
     
     return SolicitudListResponse(

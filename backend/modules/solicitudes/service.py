@@ -52,7 +52,8 @@ class SolicitudService:
         area_id: Optional[int] = None,
         stage_id: Optional[int] = None,
         status_id: Optional[int] = None,
-        created_by_user_id: Optional[int] = None
+        created_by_user_id: Optional[int] = None,
+        approver_user_id: Optional[int] = None
     ) -> tuple[List[SolicitudDetailResponse], int]:
         """
         Obtener todas las solicitudes con paginación y filtros
@@ -64,6 +65,7 @@ class SolicitudService:
             stage_id: Filtrar por etapa (opcional)
             status_id: Filtrar por estado (opcional)
             created_by_user_id: Filtrar por usuario creador (opcional)
+            approver_user_id: Filtrar por usuario aprobador (opcional)
             
         Returns:
             Tupla con (lista de solicitudes, total de solicitudes)
@@ -75,13 +77,15 @@ class SolicitudService:
             stage_id=stage_id,
             status_id=status_id,
             created_by_user_id=created_by_user_id,
+            approver_user_id=approver_user_id,
             include_relations=True
         )
         total = self.repository.count(
             area_id=area_id,
             stage_id=stage_id,
             status_id=status_id,
-            created_by_user_id=created_by_user_id
+            created_by_user_id=created_by_user_id,
+            approver_user_id=approver_user_id
         )
         return [SolicitudDetailResponse.model_validate(s) for s in solicitudes], total
     
