@@ -97,6 +97,45 @@ class SolicitudUpdate(BaseModel):
     )
 
 
+class SolicitudAjusteRequest(BaseModel):
+    """Schema para solicitar ajustes en una solicitud"""
+    comment: str = Field(..., min_length=1, max_length=1000, description="Comentario explicando los ajustes necesarios")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "comment": "Por favor ajustar los colores del logo y cambiar la tipografía del título"
+            }
+        }
+    )
+
+
+class SolicitudAprobarRequest(BaseModel):
+    """Schema para aprobar una solicitud"""
+    comment: Optional[str] = Field(None, max_length=1000, description="Comentario opcional al aprobar")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "comment": "Aprobado. Todo está correcto."
+            }
+        }
+    )
+
+
+class SolicitudRechazarRequest(BaseModel):
+    """Schema para rechazar una solicitud"""
+    comment: str = Field(..., min_length=1, max_length=1000, description="Comentario explicando el motivo del rechazo")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "comment": "No cumple con los requisitos de marca establecidos"
+            }
+        }
+    )
+
+
 class SolicitudResponse(SolicitudBase):
     """Schema para respuesta de solicitud"""
     id: int = Field(..., description="ID de la solicitud")

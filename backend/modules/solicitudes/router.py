@@ -2,7 +2,7 @@
 Router de solicitudes - Endpoints REST para gestión de solicitudes
 """
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session
 
 from modules.solicitudes.schemas import (
@@ -10,10 +10,16 @@ from modules.solicitudes.schemas import (
     SolicitudUpdate,
     SolicitudResponse,
     SolicitudDetailResponse,
-    SolicitudListResponse
+    SolicitudListResponse,
+    SolicitudAjusteRequest,
+    SolicitudAprobarRequest,
+    SolicitudRechazarRequest
 )
 from modules.solicitudes.service import SolicitudService
+from modules.solicitud_files.service import SolicitudFileService
+from modules.solicitud_files.schemas import SolicitudFileCreate
 from core.dependencies import get_current_user_id
+from core.storage import get_s3_storage, S3StorageService
 from db.session import get_db
 
 
@@ -185,3 +191,185 @@ async def delete_solicitud(
     """
     service.delete_solicitud(solicitud_id)
     return None
+
+
+@router.post("/{solicitud_id}/upload-files", status_code=status.HTTP_201_CREATED)
+async def upload_files_to_solicitud(
+    solicitud_id: int,
+    files: List[UploadFile] = File(...),
+    doc_type: str = Form("ARTE"),
+    service: SolicitudService = Depends(get_solicitud_service),
+    s3_service: S3StorageService = Depends(get_s3_storage),
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_user_id)
+):
+    """
+    Subir archivos a una solicitud existente
+    
+    - **solicitud_id**: ID de la solicitud
+    - **files**: Lista de archivos a subir
+    - **doc_type**: Tipo de documento (ARTE, BRIEF, EVIDENCIA)
+    
+    Los archivos se suben a S3 y se registran en la base de datos.
+    Requiere autenticación.
+    """
+    # Verificar que la solicitud existe
+    solicitud = service.get_solicitud_by_id(solicitud_id)
+    
+    uploaded_files = []
+    file_service = SolicitudFileService(db)
+    
+    for file in files:
+        # Subir archivo a S3
+        file_info = await s3_service.upload_file(file, solicitud_id, doc_type)
+        
+        # Registrar en base de datos
+        file_create = SolicitudFileCreate(
+            solicitud_id=solicitud_id,
+            storage_provider=file_info["storage_provider"],
+            storage_path=file_info["storage_path"],
+            filename=file_info["filename"],
+            content_type=file_info["content_type"],
+            size_bytes=file_info["size_bytes"],
+            doc_type=doc_type
+        )
+        
+        db_file = file_service.create_file(file_create)
+        uploaded_files.append(db_file)
+    
+    return {
+        "message": f"{len(uploaded_files)} archivo(s) subido(s) exitosamente",
+        "files": uploaded_files
+    }
+
+
+@router.get("/{solicitud_id}/files/{file_id}/download", status_code=status.HTTP_200_OK)
+async def get_file_download_url(
+    solicitud_id: int,
+    file_id: int,
+    db: Session = Depends(get_db),
+    s3_service: S3StorageService = Depends(get_s3_storage),
+    _: str = Depends(get_current_user_id)
+):
+    """
+    Descargar archivo directamente
+    
+    - **solicitud_id**: ID de la solicitud
+    - **file_id**: ID del archivo
+    
+    Descarga el archivo directamente desde S3 y lo envía al cliente.
+    Requiere autenticación.
+    """
+    from fastapi.responses import StreamingResponse
+    import io
+    
+    file_service = SolicitudFileService(db)
+    file = file_service.get_file_by_id(file_id)
+    
+    # Verificar que el archivo pertenece a la solicitud
+    if file.solicitud_id != solicitud_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Archivo no encontrado en esta solicitud"
+        )
+    
+    # Descargar archivo de S3
+    file_content = s3_service.download_file(file.storage_path)
+    
+    # Retornar como streaming response
+    return StreamingResponse(
+        io.BytesIO(file_content),
+        media_type=file.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{file.filename}"'
+        }
+    )
+
+
+@router.post("/{solicitud_id}/solicitar-ajustes", response_model=SolicitudDetailResponse, status_code=status.HTTP_200_OK)
+async def solicitar_ajustes(
+    solicitud_id: int,
+    ajuste_request: SolicitudAjusteRequest,
+    service: SolicitudService = Depends(get_solicitud_service),
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Solicitar ajustes en una solicitud
+    
+    - **solicitud_id**: ID de la solicitud
+    - **comment**: Comentario explicando los ajustes necesarios
+    
+    Cambia el estado de la solicitud a "AJUSTES_SOLICITADOS" y registra el evento.
+    El CREATOR podrá ver los comentarios y subir una nueva versión.
+    Requiere autenticación.
+    """
+    return service.solicitar_ajustes(
+        solicitud_id=solicitud_id,
+        comment=ajuste_request.comment,
+        actor_user_id=int(current_user_id)
+    )
+
+
+@router.get("/{solicitud_id}/eventos", status_code=status.HTTP_200_OK)
+async def get_solicitud_eventos(
+    solicitud_id: int,
+    service: SolicitudService = Depends(get_solicitud_service),
+    _: str = Depends(get_current_user_id)
+):
+    """
+    Obtener historial de eventos de una solicitud
+    
+    - **solicitud_id**: ID de la solicitud
+    
+    Retorna todos los eventos/comentarios de la solicitud ordenados cronológicamente.
+    Requiere autenticación.
+    """
+    return service.get_eventos_by_solicitud(solicitud_id)
+
+
+@router.post("/{solicitud_id}/aprobar", response_model=SolicitudDetailResponse, status_code=status.HTTP_200_OK)
+async def aprobar_solicitud(
+    solicitud_id: int,
+    aprobar_request: SolicitudAprobarRequest,
+    service: SolicitudService = Depends(get_solicitud_service),
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Aprobar una solicitud y avanzar a la siguiente etapa
+    
+    - **solicitud_id**: ID de la solicitud
+    - **comment**: Comentario opcional al aprobar
+    
+    Si hay una siguiente etapa, la solicitud avanza automáticamente.
+    Si es la última etapa, la solicitud se marca como APROBADO_FINAL.
+    Requiere autenticación y que el usuario sea aprobador de la etapa actual.
+    """
+    return service.aprobar_solicitud(
+        solicitud_id=solicitud_id,
+        comment=aprobar_request.comment,
+        actor_user_id=int(current_user_id)
+    )
+
+
+@router.post("/{solicitud_id}/rechazar", response_model=SolicitudDetailResponse, status_code=status.HTTP_200_OK)
+async def rechazar_solicitud(
+    solicitud_id: int,
+    rechazar_request: SolicitudRechazarRequest,
+    service: SolicitudService = Depends(get_solicitud_service),
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Rechazar una solicitud
+    
+    - **solicitud_id**: ID de la solicitud
+    - **comment**: Comentario explicando el motivo del rechazo (requerido)
+    
+    La solicitud se marca como RECHAZADO.
+    Requiere autenticación y que el usuario sea aprobador de la etapa actual.
+    """
+    return service.rechazar_solicitud(
+        solicitud_id=solicitud_id,
+        comment=rechazar_request.comment,
+        actor_user_id=int(current_user_id)
+    )
+

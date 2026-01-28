@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     AWS_BUCKET_NAME: str = Field(default="")
     AWS_REGION: str = Field(default="us-east-1")
     
+    # Azure AD / Microsoft Graph for Email
+    AZURE_TENANT_ID: str = Field(default="")
+    AZURE_CLIENT_ID: str = Field(default="")
+    AZURE_CLIENT_SECRET: str = Field(default="")
+    EMAIL_FROM: str = Field(default="noreply@marketingcq.com")
+    FRONTEND_URL: str = Field(default="http://localhost:3000")
+    
     # Pagination
     DEFAULT_PAGE_SIZE: int = Field(default=20)
     MAX_PAGE_SIZE: int = Field(default=100)

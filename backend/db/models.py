@@ -316,7 +316,7 @@ class SolicitudFile(Base):
     __tablename__ = "solicitud_files"
     
     # Foreign Key
-    solicitud_id = Column(Integer, ForeignKey("solicitudes.id", ondelete="RESTRICT"), nullable=False, index=True)
+    solicitud_id = Column(Integer, ForeignKey("solicitudes.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Campos de almacenamiento
     storage_provider = Column(String(50), nullable=False)  # ej: "s3", "local", "gcs"
@@ -354,6 +354,7 @@ class EventAction(str, enum.Enum):
     REJECTED = "REJECTED"
     COMMENTED = "COMMENTED"
     STAGE_CHANGED = "STAGE_CHANGED"
+    REQUEST_CHANGES = "REQUEST_CHANGES"
 
 
 class SolicitudEvento(Base):
@@ -363,7 +364,7 @@ class SolicitudEvento(Base):
     __tablename__ = "solicitud_eventos"
     
     # Foreign Keys
-    solicitud_id = Column(Integer, ForeignKey("solicitudes.id", ondelete="RESTRICT"), nullable=False, index=True)
+    solicitud_id = Column(Integer, ForeignKey("solicitudes.id", ondelete="CASCADE"), nullable=False, index=True)
     stage_id = Column(Integer, ForeignKey("etapas.id", ondelete="RESTRICT"), nullable=False, index=True)
     status_id = Column(Integer, ForeignKey("estados.id", ondelete="RESTRICT"), nullable=False, index=True)
     actor_user_id = Column(Integer, ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False, index=True)
