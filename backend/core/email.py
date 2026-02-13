@@ -141,15 +141,17 @@ class EmailService:
         <html>
         <head>
             <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background-color: #007bff; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
-                .content {{ background-color: #f8f9fa; padding: 30px; border: 1px solid #dee2e6; border-top: none; }}
-                .detail {{ margin: 10px 0; }}
-                .detail strong {{ color: #495057; }}
-                .button {{ display: inline-block; padding: 12px 30px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
-                .button:hover {{ background-color: #0056b3; }}
-                .footer {{ text-align: center; padding: 20px; color: #6c757d; font-size: 12px; }}
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafb; }}
+                .header {{ background: linear-gradient(135deg, #00829a 0%, #00a3b4 100%); color: white; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0; }}
+                .header h2 {{ margin: 0; font-size: 24px; font-weight: bold; }}
+                .content {{ background-color: white; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                .detail {{ margin: 15px 0; padding: 10px; background-color: #f8fafb; border-radius: 4px; }}
+                .detail strong {{ color: #00829a; font-weight: 600; }}
+                .button {{ display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #00829a 0%, #00a3b4 100%); color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; box-shadow: 0 2px 4px rgba(0,130,154,0.3); }}
+                .button:hover {{ opacity: 0.9; }}
+                .footer {{ text-align: center; padding: 20px; color: #6c757d; font-size: 12px; margin-top: 20px; }}
+                .brand {{ color: #00829a; font-weight: bold; }}
             </style>
         </head>
         <body>
@@ -174,7 +176,7 @@ class EmailService:
                         <strong>Creado por:</strong> {creator_name}
                     </div>
                     
-                    <p style="margin-top: 30px;">
+                    <p style="margin-top: 30px; text-align: center;">
                         <a href="{solicitud_url}" class="button">Ver Solicitud</a>
                     </p>
                     
@@ -184,7 +186,7 @@ class EmailService:
                 </div>
                 <div class="footer">
                     <p>Este es un correo automático, por favor no responder.</p>
-                    <p>Marketing CQ - Sistema de Gestión de Solicitudes</p>
+                    <p><span class="brand">CAFÉ QUINDÍO</span> - Sistema de Gestión de Marketing</p>
                 </div>
             </div>
         </body>
@@ -222,16 +224,18 @@ class EmailService:
         <html>
         <head>
             <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background-color: #ffc107; color: #000; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
-                .content {{ background-color: #f8f9fa; padding: 30px; border: 1px solid #dee2e6; border-top: none; }}
-                .detail {{ margin: 10px 0; }}
-                .detail strong {{ color: #495057; }}
-                .comment {{ background-color: white; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0; }}
-                .button {{ display: inline-block; padding: 12px 30px; background-color: #ffc107; color: #000; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
-                .button:hover {{ background-color: #e0a800; }}
-                .footer {{ text-align: center; padding: 20px; color: #6c757d; font-size: 12px; }}
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafb; }}
+                .header {{ background: linear-gradient(135deg, #96c121 0%, #c2d500 100%); color: white; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0; }}
+                .header h2 {{ margin: 0; font-size: 24px; font-weight: bold; }}
+                .content {{ background-color: white; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                .detail {{ margin: 15px 0; padding: 10px; background-color: #f8fafb; border-radius: 4px; }}
+                .detail strong {{ color: #96c121; font-weight: 600; }}
+                .comment {{ background-color: #fffbea; padding: 20px; border-left: 4px solid #96c121; margin: 20px 0; border-radius: 4px; }}
+                .button {{ display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #96c121 0%, #c2d500 100%); color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; box-shadow: 0 2px 4px rgba(150,193,33,0.3); }}
+                .button:hover {{ opacity: 0.9; }}
+                .footer {{ text-align: center; padding: 20px; color: #6c757d; font-size: 12px; margin-top: 20px; }}
+                .brand {{ color: #00829a; font-weight: bold; }}
             </style>
         </head>
         <body>
@@ -254,11 +258,11 @@ class EmailService:
                     </div>
                     
                     <div class="comment">
-                        <strong>Comentario:</strong>
-                        <p>{comment}</p>
+                        <strong style="color: #96c121;">Comentario:</strong>
+                        <p style="margin: 10px 0 0 0;">{comment}</p>
                     </div>
                     
-                    <p style="margin-top: 30px;">
+                    <p style="margin-top: 30px; text-align: center;">
                         <a href="{solicitud_url}/upload" class="button">Subir Nueva Versión</a>
                     </p>
                     
@@ -268,7 +272,7 @@ class EmailService:
                 </div>
                 <div class="footer">
                     <p>Este es un correo automático, por favor no responder.</p>
-                    <p>Marketing CQ - Sistema de Gestión de Solicitudes</p>
+                    <p><span class="brand">CAFÉ QUINDÍO</span> - Sistema de Gestión de Marketing</p>
                 </div>
             </div>
         </body>
@@ -304,22 +308,26 @@ class EmailService:
         
         solicitud_url = f"{self.frontend_url}/solicitudes/{solicitud_id}"
         
-        header_color = "#28a745" if is_final else "#007bff"
+        header_color = "linear-gradient(135deg, #96c121 0%, #c2d500 100%)" if is_final else "linear-gradient(135deg, #00829a 0%, #00a3b4 100%)"
+        button_color = "linear-gradient(135deg, #96c121 0%, #c2d500 100%)" if is_final else "linear-gradient(135deg, #00829a 0%, #00a3b4 100%)"
+        accent_color = "#96c121" if is_final else "#00829a"
         header_text = "✅ Aprobación Final" if is_final else "✅ Solicitud Aprobada"
         
         body_html = f"""
         <html>
         <head>
             <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background-color: {header_color}; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
-                .content {{ background-color: #f8f9fa; padding: 30px; border: 1px solid #dee2e6; border-top: none; }}
-                .detail {{ margin: 10px 0; }}
-                .detail strong {{ color: #495057; }}
-                .button {{ display: inline-block; padding: 12px 30px; background-color: {header_color}; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
-                .button:hover {{ opacity: 0.8; }}
-                .footer {{ text-align: center; padding: 20px; color: #6c757d; font-size: 12px; }}
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafb; }}
+                .header {{ background: {header_color}; color: white; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0; }}
+                .header h2 {{ margin: 0; font-size: 24px; font-weight: bold; }}
+                .content {{ background-color: white; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                .detail {{ margin: 15px 0; padding: 10px; background-color: #f8fafb; border-radius: 4px; }}
+                .detail strong {{ color: {accent_color}; font-weight: 600; }}
+                .button {{ display: inline-block; padding: 14px 32px; background: {button_color}; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; box-shadow: 0 2px 4px rgba(0,130,154,0.3); }}
+                .button:hover {{ opacity: 0.9; }}
+                .footer {{ text-align: center; padding: 20px; color: #6c757d; font-size: 12px; margin-top: 20px; }}
+                .brand {{ color: #00829a; font-weight: bold; }}
             </style>
         </head>
         <body>
@@ -344,13 +352,13 @@ class EmailService:
                         <strong>Aprobado por:</strong> {approver_name}
                     </div>
                     
-                    <p style="margin-top: 30px;">
+                    <p style="margin-top: 30px; text-align: center;">
                         <a href="{solicitud_url}" class="button">Ver Solicitud</a>
                     </p>
                 </div>
                 <div class="footer">
                     <p>Este es un correo automático, por favor no responder.</p>
-                    <p>Marketing CQ - Sistema de Gestión de Solicitudes</p>
+                    <p><span class="brand">CAFÉ QUINDÍO</span> - Sistema de Gestión de Marketing</p>
                 </div>
             </div>
         </body>
@@ -388,16 +396,18 @@ class EmailService:
         <html>
         <head>
             <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background-color: #dc3545; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
-                .content {{ background-color: #f8f9fa; padding: 30px; border: 1px solid #dee2e6; border-top: none; }}
-                .detail {{ margin: 10px 0; }}
-                .detail strong {{ color: #495057; }}
-                .comment {{ background-color: white; padding: 15px; border-left: 4px solid #dc3545; margin: 20px 0; }}
-                .button {{ display: inline-block; padding: 12px 30px; background-color: #dc3545; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
-                .button:hover {{ background-color: #c82333; }}
-                .footer {{ text-align: center; padding: 20px; color: #6c757d; font-size: 12px; }}
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafb; }}
+                .header {{ background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0; }}
+                .header h2 {{ margin: 0; font-size: 24px; font-weight: bold; }}
+                .content {{ background-color: white; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                .detail {{ margin: 15px 0; padding: 10px; background-color: #f8fafb; border-radius: 4px; }}
+                .detail strong {{ color: #dc3545; font-weight: 600; }}
+                .comment {{ background-color: #fff5f5; padding: 20px; border-left: 4px solid #dc3545; margin: 20px 0; border-radius: 4px; }}
+                .button {{ display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #00829a 0%, #00a3b4 100%); color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; box-shadow: 0 2px 4px rgba(0,130,154,0.3); }}
+                .button:hover {{ opacity: 0.9; }}
+                .footer {{ text-align: center; padding: 20px; color: #6c757d; font-size: 12px; margin-top: 20px; }}
+                .brand {{ color: #00829a; font-weight: bold; }}
             </style>
         </head>
         <body>
@@ -420,17 +430,17 @@ class EmailService:
                     </div>
                     
                     <div class="comment">
-                        <strong>Motivo del rechazo:</strong>
-                        <p>{comment}</p>
+                        <strong style="color: #dc3545;">Motivo del rechazo:</strong>
+                        <p style="margin: 10px 0 0 0;">{comment}</p>
                     </div>
                     
-                    <p style="margin-top: 30px;">
+                    <p style="margin-top: 30px; text-align: center;">
                         <a href="{solicitud_url}" class="button">Ver Detalles</a>
                     </p>
                 </div>
                 <div class="footer">
                     <p>Este es un correo automático, por favor no responder.</p>
-                    <p>Marketing CQ - Sistema de Gestión de Solicitudes</p>
+                    <p><span class="brand">CAFÉ QUINDÍO</span> - Sistema de Gestión de Marketing</p>
                 </div>
             </div>
         </body>

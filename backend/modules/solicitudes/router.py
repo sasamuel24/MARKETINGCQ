@@ -286,6 +286,120 @@ async def get_file_download_url(
     )
 
 
+@router.get("/{solicitud_id}/files/{file_id}/preview", status_code=status.HTTP_200_OK)
+async def get_file_preview(
+    solicitud_id: int,
+    file_id: int,
+    db: Session = Depends(get_db),
+    s3_service: S3StorageService = Depends(get_s3_storage),
+    _: str = Depends(get_current_user_id)
+):
+    """
+    Obtener vista previa optimizada de un archivo
+    
+    - **solicitud_id**: ID de la solicitud
+    - **file_id**: ID del archivo
+    
+    Para imágenes, intenta obtener el thumbnail pre-generado.
+    Si no existe, genera uno on-the-fly.
+    Para PDFs, retorna el archivo completo.
+    Requiere autenticación.
+    """
+    from fastapi.responses import StreamingResponse
+    import io
+    from PIL import Image
+    
+    file_service = SolicitudFileService(db)
+    file = file_service.get_file_by_id(file_id)
+    
+    # Verificar que el archivo pertenece a la solicitud
+    if file.solicitud_id != solicitud_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Archivo no encontrado en esta solicitud"
+        )
+    
+    # Si es imagen, intentar obtener thumbnail pre-generado
+    if file.content_type.startswith('image/'):
+        # Intentar obtener thumbnail primero
+        thumbnail_content = s3_service.download_thumbnail(file.storage_path)
+        
+        if thumbnail_content:
+            # Retornar thumbnail pre-generado (más rápido)
+            return StreamingResponse(
+                io.BytesIO(thumbnail_content),
+                media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "Access-Control-Allow-Origin": "*"
+                }
+            )
+        
+        # Si no hay thumbnail, generar on-the-fly (fallback)
+        try:
+            file_content = s3_service.download_file(file.storage_path)
+            
+            # Abrir imagen con mejor manejo de formatos
+            img = Image.open(io.BytesIO(file_content))
+            img.load()
+            
+            # Manejar diferentes modos de color
+            if img.mode in ('RGBA', 'LA', 'PA'):
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'PA':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if 'A' in img.mode else None)
+                img = background
+            elif img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+            
+            if img.mode == 'L':
+                img = img.convert('RGB')
+            
+            # Calcular nuevo tamaño
+            img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+            
+            # Guardar como JPEG optimizado
+            output = io.BytesIO()
+            img.save(output, format='JPEG', quality=85, optimize=True)
+            output.seek(0)
+            
+            return StreamingResponse(
+                output,
+                media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "Access-Control-Allow-Origin": "*"
+                }
+            )
+        except Exception as e:
+            # Si falla todo, retornar imagen original
+            import traceback
+            print(f"Error generating thumbnail for file {file.filename}: {e}")
+            print(traceback.format_exc())
+            file_content = s3_service.download_file(file.storage_path)
+            return StreamingResponse(
+                io.BytesIO(file_content),
+                media_type=file.content_type,
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "Access-Control-Allow-Origin": "*"
+                }
+            )
+    else:
+        # Para PDFs y otros, retornar archivo completo
+        file_content = s3_service.download_file(file.storage_path)
+        return StreamingResponse(
+            io.BytesIO(file_content),
+            media_type=file.content_type,
+            headers={
+                "Cache-Control": "public, max-age=86400",
+                "Access-Control-Allow-Origin": "*"
+            }
+        )
+
+
+
 @router.post("/{solicitud_id}/solicitar-ajustes", response_model=SolicitudDetailResponse, status_code=status.HTTP_200_OK)
 async def solicitar_ajustes(
     solicitud_id: int,
