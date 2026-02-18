@@ -147,9 +147,12 @@ async def update_etapa_aprobador(
     Actualizar una asignación etapa-aprobador existente
     
     - **etapa_aprobador_id**: ID de la asignación a actualizar
-    - **is_active**: Nuevo estado de la asignación
+    - **etapa_id**: Nuevo ID de la etapa (opcional)
+    - **user_id**: Nuevo ID del usuario aprobador (opcional)
+    - **is_active**: Nuevo estado de la asignación (opcional)
     
     Solo se pueden actualizar los campos proporcionados.
+    La combinación etapa_id + user_id debe ser única.
     Requiere autenticación.
     """
     return service.update_etapa_aprobador(etapa_aprobador_id, etapa_aprobador)

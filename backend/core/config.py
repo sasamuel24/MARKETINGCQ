@@ -79,6 +79,22 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = Field(default="noreply@marketingcq.com")
     FRONTEND_URL: str = Field(default="http://localhost:3000")
     
+    # Weekly Summary Email Scheduler
+    WEEKLY_SUMMARY_USER_IDS: list[int] = Field(default=[3, 4])
+    WEEKLY_CRON_DAY: str = Field(default="mon")
+    WEEKLY_CRON_HOUR: int = Field(default=8)
+    WEEKLY_CRON_MINUTE: int = Field(default=0)
+    WEEKLY_SUMMARY_ENABLED: bool = Field(default=True)
+    
+    @field_validator("WEEKLY_SUMMARY_USER_IDS", mode="before")
+    @classmethod
+    def parse_weekly_summary_user_ids(cls, v):
+        """Parsear WEEKLY_SUMMARY_USER_IDS si viene como string JSON"""
+        if isinstance(v, str):
+            import json
+            return json.loads(v)
+        return v
+    
     # Pagination
     DEFAULT_PAGE_SIZE: int = Field(default=20)
     MAX_PAGE_SIZE: int = Field(default=100)

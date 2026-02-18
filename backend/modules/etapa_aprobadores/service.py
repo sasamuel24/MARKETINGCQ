@@ -135,11 +135,39 @@ class EtapaAprobadorService:
             HTTPException: Si el etapa aprobador no existe
         """
         # Verificar que existe
-        if not self.repository.get_by_id(etapa_aprobador_id):
+        existing = self.repository.get_by_id(etapa_aprobador_id)
+        if not existing:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Asignación con ID {etapa_aprobador_id} no encontrada"
             )
+        
+        # Verificar que la nueva etapa existe si se proporciona
+        new_etapa_id = etapa_aprobador_data.etapa_id if etapa_aprobador_data.etapa_id is not None else existing.etapa_id
+        if etapa_aprobador_data.etapa_id is not None:
+            if not self.etapa_repository.get_by_id(etapa_aprobador_data.etapa_id):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"La etapa con ID {etapa_aprobador_data.etapa_id} no existe"
+                )
+        
+        # Verificar que el nuevo usuario existe si se proporciona
+        new_user_id = etapa_aprobador_data.user_id if etapa_aprobador_data.user_id is not None else existing.user_id
+        if etapa_aprobador_data.user_id is not None:
+            if not self.usuario_repository.get_by_id(etapa_aprobador_data.user_id):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El usuario con ID {etapa_aprobador_data.user_id} no existe"
+                )
+        
+        # Verificar que la combinación etapa+usuario no esté duplicada
+        if etapa_aprobador_data.etapa_id is not None or etapa_aprobador_data.user_id is not None:
+            duplicate = self.repository.get_by_etapa_and_user(new_etapa_id, new_user_id)
+            if duplicate and duplicate.id != etapa_aprobador_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Ya existe una asignación para la etapa {new_etapa_id} y usuario {new_user_id}"
+                )
         
         try:
             etapa_aprobador = self.repository.update(etapa_aprobador_id, etapa_aprobador_data)

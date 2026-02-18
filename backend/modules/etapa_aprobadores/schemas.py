@@ -47,11 +47,14 @@ class EtapaAprobadorCreate(EtapaAprobadorBase):
 
 class EtapaAprobadorUpdate(BaseModel):
     """Schema para actualizar un etapa aprobador"""
+    etapa_id: Optional[int] = Field(None, gt=0, description="ID de la etapa")
+    user_id: Optional[int] = Field(None, gt=0, description="ID del usuario aprobador")
     is_active: Optional[bool] = Field(None, description="Indica si la asignación está activa")
     
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
+                "user_id": 5,
                 "is_active": False
             }
         }

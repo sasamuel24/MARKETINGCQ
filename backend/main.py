@@ -3,11 +3,16 @@ Punto de entrada de la aplicación FastAPI
 
 Ejecutar con: uvicorn main:app --reload
 """
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends
 from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
 
 from core.config import settings
 from core.middleware import setup_middlewares
+from core.scheduler import setup_scheduler
+from core.dependencies import get_current_user_id
+from db.session import get_db
 
 # Importar routers
 from modules.auth.router import router as auth_router
@@ -22,6 +27,27 @@ from modules.solicitudes.router import router as solicitudes_router
 from modules.solicitud_files.router import router as solicitud_files_router
 
 
+# ── Lifespan: startup / shutdown ──
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # STARTUP
+    sched = setup_scheduler()
+    sched.start()
+    jobs = [j.name for j in sched.get_jobs()]
+    print(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION}")
+    print(f"📝 Environment: {settings.ENVIRONMENT}")
+    print(f"📚 Docs: http://localhost:{settings.PORT}/docs")
+    print(f"🔗 API: http://localhost:{settings.PORT}{settings.API_PREFIX}")
+    print(f"⏰ Scheduler iniciado. Jobs: {jobs}")
+    
+    yield  # La app corre aquí
+    
+    # SHUTDOWN
+    sched.shutdown(wait=False)
+    print("🔴 Scheduler detenido.")
+    print("👋 Shutting down...")
+
+
 # Crear instancia de FastAPI
 app = FastAPI(
     title=settings.APP_NAME,
@@ -30,7 +56,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
-    debug=settings.DEBUG
+    debug=settings.DEBUG,
+    lifespan=lifespan,
 )
 
 # Configurar middlewares (CORS, logging, etc.)
@@ -72,24 +99,28 @@ async def api_root():
     }
 
 
-# Event handlers
-@app.on_event("startup")
-async def startup_event():
+# ── Endpoint admin: disparar resumen semanal manualmente ──
+@app.post(
+    f"{settings.API_PREFIX}/admin/trigger-weekly-summary",
+    tags=["Admin"],
+    summary="Disparar resumen semanal manualmente",
+)
+async def trigger_weekly_summary(
+    current_user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """
-    Ejecutar al iniciar la aplicación
+    Disparador manual del resumen semanal de artes pendientes.
+    Útil para pruebas sin esperar al día programado.
+    Requiere autenticación.
     """
-    print(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION}")
-    print(f"📝 Environment: {settings.ENVIRONMENT}")
-    print(f"📚 Docs: http://localhost:{settings.PORT}/docs")
-    print(f"🔗 API: http://localhost:{settings.PORT}{settings.API_PREFIX}")
+    from modules.weekly_summary.service import weekly_summary_service
 
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    Ejecutar al cerrar la aplicación
-    """
-    print("👋 Shutting down...")
+    results = weekly_summary_service.run_for_users(
+        db=db,
+        user_ids=settings.WEEKLY_SUMMARY_USER_IDS,
+    )
+    return {"message": "Resumen semanal ejecutado", "results": results}
 
 
 if __name__ == "__main__":

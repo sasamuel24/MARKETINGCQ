@@ -2,6 +2,7 @@
 Servicio de email usando Microsoft Graph API
 """
 import logging
+from datetime import datetime, timedelta
 from typing import List, Optional
 import requests
 import msal
@@ -448,6 +449,125 @@ class EmailService:
         """
         
         return self.send_email([to_email], subject, body_html)
+
+
+    def send_weekly_summary_email(
+        self,
+        recipient_email: str,
+        recipient_name: str,
+        solicitudes: list,
+    ) -> bool:
+        """
+        Envía el resumen semanal de artes pendientes de aprobación.
+        
+        Args:
+            recipient_email: Correo del destinatario
+            recipient_name: Nombre del destinatario
+            solicitudes: Lista de objetos Solicitud pendientes
+            
+        Returns:
+            True si el correo se envió exitosamente
+        """
+        # Construir filas de la tabla HTML
+        filas_html = ""
+        for s in solicitudes:
+            dias_pendiente = (datetime.utcnow() - s.created_at).days
+            alerta_style = "color: #c0392b; font-weight: bold;" if dias_pendiente > 7 else ""
+            filas_html += f"""
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #eee;">{s.title}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee;">{s.area.nombre if s.area else 'N/A'}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee;">{s.stage.label if s.stage else 'N/A'}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee;">
+                    <span style="{alerta_style}">{dias_pendiente} día(s)</span>
+                </td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee;">
+                    <a href="{self.frontend_url}/solicitudes/{s.id}"
+                       style="color: #00829a; text-decoration: none; font-weight: bold;">Ver arte</a>
+                </td>
+            </tr>
+            """
+
+        week_range = self._get_week_range()
+
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #f5f5f5; padding: 20px; margin: 0;">
+            <div style="max-width: 700px; margin: 0 auto; background: white;
+                        border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+
+                <!-- Header -->
+                <div style="background: linear-gradient(135deg, #00829a 0%, #00a3b4 100%); padding: 24px 32px;">
+                    <h1 style="color: white; margin: 0; font-size: 22px;">
+                        Resumen Semanal de Artes Pendientes
+                    </h1>
+                    <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0 0; font-size: 14px;">
+                        Marketing CQ &middot; Semana del {week_range}
+                    </p>
+                </div>
+
+                <!-- Body -->
+                <div style="padding: 32px;">
+                    <p style="color: #333; font-size: 15px;">
+                        Hola <strong>{recipient_name}</strong>,
+                    </p>
+                    <p style="color: #555; font-size: 14px;">
+                        Tienes <strong style="color: #00829a;">{len(solicitudes)}</strong>
+                        arte(s) pendiente(s) de tu aprobación esta semana:
+                    </p>
+
+                    <!-- Tabla de solicitudes -->
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 16px;
+                                  font-size: 13px; color: #333;">
+                        <thead>
+                            <tr style="background-color: #f0f9fb;">
+                                <th style="padding: 10px; text-align: left; color: #00829a;">Título</th>
+                                <th style="padding: 10px; text-align: left; color: #00829a;">Área</th>
+                                <th style="padding: 10px; text-align: left; color: #00829a;">Etapa</th>
+                                <th style="padding: 10px; text-align: left; color: #00829a;">Tiempo en espera</th>
+                                <th style="padding: 10px; text-align: left; color: #00829a;">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filas_html}
+                        </tbody>
+                    </table>
+
+                    <!-- CTA -->
+                    <div style="text-align: center; margin-top: 28px;">
+                        <a href="{self.frontend_url}"
+                           style="background-color: #96c121; color: white; padding: 12px 28px;
+                                  border-radius: 6px; text-decoration: none; font-size: 14px;
+                                  font-weight: bold; display: inline-block;">
+                            Ir al Panel de Aprobaciones
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="background-color: #f9f9f9; padding: 16px 32px;
+                            border-top: 1px solid #eee; text-align: center;">
+                    <p style="color: #999; font-size: 12px; margin: 0;">
+                        Este correo es generado automáticamente &middot;
+                        <span style="color: #00829a; font-weight: bold;">CAFÉ QUINDÍO</span> - Marketing CQ
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        subject = f"[Marketing CQ] Resumen semanal: {len(solicitudes)} arte(s) por aprobar"
+        return self.send_email([recipient_email], subject, html_body)
+
+    @staticmethod
+    def _get_week_range() -> str:
+        """Retorna el rango de la semana actual como string legible."""
+        today = datetime.utcnow()
+        monday = today - timedelta(days=today.weekday())
+        sunday = monday + timedelta(days=6)
+        return f"{monday.strftime('%d/%m')} - {sunday.strftime('%d/%m/%Y')}"
 
 
 # Instancia global del servicio de email

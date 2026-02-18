@@ -13,6 +13,7 @@ from modules.etapas.repository import EtapaRepository
 from modules.estados.repository import EstadoRepository
 from modules.usuarios.repository import UserRepository
 from core.email import email_service
+from core.config import settings
 
 
 class SolicitudService:
@@ -151,9 +152,11 @@ class SolicitudService:
                 .filter(EtapaAprobador.etapa_id == solicitud_data.stage_id)\
                 .all()
             
-            # Obtener emails de los aprobadores
+            # Obtener emails de los aprobadores (excluir usuarios del resumen semanal)
             emails_aprobadores = []
             for aprobador_rel in aprobadores:
+                if aprobador_rel.user_id in settings.WEEKLY_SUMMARY_USER_IDS:
+                    continue  # Este usuario solo recibe el resumen semanal
                 user = self.user_repository.get_by_id(aprobador_rel.user_id)
                 if user and user.email:
                     emails_aprobadores.append(user.email)
@@ -576,9 +579,11 @@ class SolicitudService:
                 .filter(EtapaAprobador.etapa_id == siguiente_etapa.id)\
                 .all()
             
-            # Obtener emails de los aprobadores
+            # Obtener emails de los aprobadores (excluir usuarios del resumen semanal)
             emails_aprobadores = []
             for aprobador_rel in nuevos_aprobadores:
+                if aprobador_rel.user_id in settings.WEEKLY_SUMMARY_USER_IDS:
+                    continue  # Este usuario solo recibe el resumen semanal
                 user = self.user_repository.get_by_id(aprobador_rel.user_id)
                 if user and user.email:
                     emails_aprobadores.append(user.email)
