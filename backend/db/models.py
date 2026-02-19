@@ -173,6 +173,7 @@ class User(Base):
     full_name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
+    must_change_password = Column(Boolean, nullable=False, server_default='true')
     
     # Foreign Keys
     rol_id = Column(Integer, ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False, index=True)

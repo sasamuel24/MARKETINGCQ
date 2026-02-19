@@ -57,18 +57,20 @@ class AuthService:
             "full_name": user.full_name,
             "role": user.rol.nombre if user.rol else "user",
             "rol_id": user.rol_id,
-            "area_id": user.area_id
+            "area_id": user.area_id,
+            "must_change_password": user.must_change_password,
         }
     
-    def create_tokens(self, user_id: str) -> Dict[str, Any]:
+    def create_tokens(self, user_id: str, must_change_password: bool = False) -> Dict[str, Any]:
         """
         Crear access y refresh tokens para un usuario
         
         Args:
             user_id: ID del usuario
+            must_change_password: Si el usuario debe cambiar su contraseña
             
         Returns:
-            Dict con access_token, refresh_token, expires_in
+            Dict con access_token, refresh_token, expires_in, must_change_password
         """
         access_token = create_access_token(data={"sub": user_id})
         refresh_token = create_refresh_token(data={"sub": user_id})
@@ -77,7 +79,8 @@ class AuthService:
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
-            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "must_change_password": must_change_password,
         }
     
     def refresh_access_token(self, refresh_token: str) -> Dict[str, Any]:
@@ -119,6 +122,23 @@ class AuthService:
             "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
         }
     
+    def change_user_password(self, user_id: str, new_password: str) -> None:
+        """
+        Cambiar contraseña del usuario y marcar must_change_password = False
+        
+        Args:
+            user_id: ID del usuario
+            new_password: Nueva contraseña en texto plano
+        """
+        from fastapi import HTTPException
+        user = self.db.query(User).filter(User.id == int(user_id)).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        
+        user.password_hash = get_password_hash(new_password)
+        user.must_change_password = False
+        self.db.commit()
+
     def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
         Obtener usuario por ID

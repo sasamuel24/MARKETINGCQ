@@ -56,6 +56,7 @@ class UserUpdate(BaseModel):
     password: Optional[str] = Field(None, min_length=8, description="Nueva contraseña")
     rol_id: Optional[int] = Field(None, gt=0, description="ID del rol")
     area_id: Optional[int] = Field(None, gt=0, description="ID del área")
+    must_change_password: Optional[bool] = Field(None, description="Forzar cambio de contraseña en el próximo login")
     
     model_config = ConfigDict(
         json_schema_extra={

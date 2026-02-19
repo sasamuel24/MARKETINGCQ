@@ -26,6 +26,7 @@ class TokenResponse(BaseModel):
     refresh_token: str = Field(..., description="JWT refresh token")
     token_type: str = Field(default="bearer", description="Tipo de token")
     expires_in: int = Field(..., description="Segundos hasta expiración")
+    must_change_password: bool = Field(default=False, description="Si el usuario debe cambiar su contraseña")
     
     model_config = {
         "json_schema_extra": {
@@ -33,7 +34,8 @@ class TokenResponse(BaseModel):
                 "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "token_type": "bearer",
-                "expires_in": 1800
+                "expires_in": 1800,
+                "must_change_password": False
             }
         }
     }
@@ -64,6 +66,11 @@ class UserResponse(BaseModel):
             }
         }
     }
+
+
+class ChangePasswordRequest(BaseModel):
+    """Request para cambiar contraseña"""
+    new_password: str = Field(..., min_length=8, description="Nueva contraseña (mínimo 8 caracteres)")
 
 
 class RegisterRequest(BaseModel):

@@ -8,7 +8,8 @@ from modules.auth.schemas import (
     LoginRequest,
     TokenResponse,
     RefreshTokenRequest,
-    UserResponse
+    UserResponse,
+    ChangePasswordRequest,
 )
 from modules.auth.service import AuthService
 from core.dependencies import get_current_user_id
@@ -37,7 +38,10 @@ async def login(credentials: LoginRequest):
         )
     
     # Crear tokens
-    tokens = auth_service.create_tokens(user["id"])
+    tokens = auth_service.create_tokens(
+        user["id"],
+        must_change_password=user.get("must_change_password", False)
+    )
     
     return TokenResponse(**tokens)
 
@@ -59,6 +63,20 @@ async def refresh_token(request: RefreshTokenRequest):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e.detail)
         )
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_password(
+    data: ChangePasswordRequest,
+    user_id: Annotated[str, Depends(get_current_user_id)]
+):
+    """
+    Cambiar contraseña del usuario autenticado.
+    Marca must_change_password = False al completar.
+    """
+    auth_service = AuthService()
+    auth_service.change_user_password(user_id, data.new_password)
+    return {"message": "Contraseña actualizada correctamente"}
 
 
 @router.get("/me", response_model=UserResponse, status_code=status.HTTP_200_OK)
