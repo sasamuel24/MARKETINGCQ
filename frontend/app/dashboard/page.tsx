@@ -347,33 +347,12 @@ export default function Dashboard() {
       const newSolicitud = await res.json();
       console.log("Solicitud creada exitosamente:", newSolicitud);
       
-      // Upload files to S3
+      // Upload files directamente a S3 con presigned URLs (evita límite 10MB de API Gateway)
       if (formData.files.length > 0) {
-        console.log("Subiendo archivos a S3...");
-        const formDataFiles = new FormData();
-        
-        // Agregar cada archivo al FormData
-        formData.files.forEach((file) => {
-          formDataFiles.append("files", file);
-        });
-        formDataFiles.append("doc_type", "ARTE");
-        
-        const uploadRes = await fetch(`${API_URL}/api/v1/solicitudes/${newSolicitud.id}/upload-files`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
-          body: formDataFiles
-        });
-        
-        if (!uploadRes.ok) {
-          const uploadError = await uploadRes.json();
-          console.error("Error al subir archivos:", uploadError);
-          throw new Error(uploadError.detail || "Error al subir archivos");
-        }
-        
-        const uploadResult = await uploadRes.json();
-        console.log("Archivos subidos exitosamente:", uploadResult);
+        console.log("Subiendo archivos a S3 via presigned URL...");
+        const { uploadFilesWithPresignedUrl } = await import("@/lib/uploadFiles");
+        await uploadFilesWithPresignedUrl(API_URL, token!, newSolicitud.id, formData.files, "ARTE");
+        console.log("Archivos subidos exitosamente");
       }
       
       // Refresh solicitudes list

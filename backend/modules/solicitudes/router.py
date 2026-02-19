@@ -2,7 +2,7 @@
 Router de solicitudes - Endpoints REST para gestión de solicitudes
 """
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, Query, status, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, Query, status, UploadFile, File, Form, HTTPException, Body
 from sqlalchemy.orm import Session
 
 from modules.solicitudes.schemas import (
@@ -241,6 +241,61 @@ async def upload_files_to_solicitud(
         "message": f"{len(uploaded_files)} archivo(s) subido(s) exitosamente",
         "files": uploaded_files
     }
+
+
+@router.post("/{solicitud_id}/presigned-upload", status_code=status.HTTP_200_OK)
+async def get_presigned_upload_urls(
+    solicitud_id: int,
+    files_info: List[dict] = Body(...),
+    s3_service: S3StorageService = Depends(get_s3_storage),
+    service: SolicitudService = Depends(get_solicitud_service),
+    _: str = Depends(get_current_user_id)
+):
+    """
+    Genera presigned URLs de S3 para subir archivos directamente desde el browser.
+    El browser sube a S3 sin pasar por API Gateway (evita límite 10MB).
+
+    Body: [{"filename": "foto.png", "content_type": "image/png", "doc_type": "ARTE"}]
+    """
+    service.get_solicitud_by_id(solicitud_id)  # valida que existe
+    urls = []
+    for f in files_info:
+        result = s3_service.generate_presigned_upload_url(
+            solicitud_id=solicitud_id,
+            filename=f.get("filename", "archivo"),
+            content_type=f.get("content_type", "application/octet-stream"),
+            doc_type=f.get("doc_type", "ARTE"),
+        )
+        urls.append(result)
+    return {"urls": urls}
+
+
+@router.post("/{solicitud_id}/register-file", status_code=status.HTTP_201_CREATED)
+async def register_uploaded_file(
+    solicitud_id: int,
+    file_data: dict = Body(...),
+    db: Session = Depends(get_db),
+    service: SolicitudService = Depends(get_solicitud_service),
+    _: str = Depends(get_current_user_id)
+):
+    """
+    Registra en BD un archivo que ya fue subido directamente a S3 con presigned URL.
+
+    Body: {"storage_path": "...", "filename": "...", "content_type": "...", "size_bytes": 123, "doc_type": "ARTE"}
+    """
+    service.get_solicitud_by_id(solicitud_id)  # valida que existe
+    file_service = SolicitudFileService(db)
+    file_create = SolicitudFileCreate(
+        solicitud_id=solicitud_id,
+        storage_provider="s3",
+        storage_path=file_data["storage_path"],
+        filename=file_data["filename"],
+        content_type=file_data["content_type"],
+        size_bytes=int(file_data["size_bytes"]),
+        doc_type=file_data.get("doc_type", "ARTE")
+    )
+    db_file = file_service.create_file(file_create)
+    return db_file
 
 
 @router.get("/{solicitud_id}/files/{file_id}/download", status_code=status.HTTP_200_OK)

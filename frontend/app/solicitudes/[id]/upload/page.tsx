@@ -76,24 +76,9 @@ export default function UploadNewVersionPage() {
     const token = localStorage.getItem("access_token");
 
     try {
-      // 1. Subir archivos
-      const formData = new FormData();
-      files.forEach((file) => {
-        formData.append("files", file);
-      });
-
-      const uploadRes = await fetch(`${API_URL}/api/v1/solicitudes/${solicitudId}/upload-files`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      if (!uploadRes.ok) {
-        const errorData = await uploadRes.json();
-        throw new Error(errorData.detail || "Error al subir archivos");
-      }
+      // 1. Subir archivos directamente a S3 con presigned URLs (evita límite 10MB de API Gateway)
+      const { uploadFilesWithPresignedUrl } = await import("@/lib/uploadFiles");
+      await uploadFilesWithPresignedUrl(API_URL, token!, parseInt(solicitudId), files, "ARTE");
 
       // 2. Cambiar estado de vuelta a EN_REVISION
       const updateRes = await fetch(`${API_URL}/api/v1/solicitudes/${solicitudId}`, {

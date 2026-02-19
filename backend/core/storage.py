@@ -305,6 +305,43 @@ class S3StorageService:
                 detail=f"Error al generar URL de descarga: {e.response['Error']['Message']}"
             )
     
+    def generate_presigned_upload_url(
+        self,
+        solicitud_id: int,
+        filename: str,
+        content_type: str,
+        doc_type: str = "ARTE",
+        expiration: int = 3600
+    ) -> dict:
+        """
+        Generar URL temporal firmada para que el browser suba directamente a S3.
+        Evita pasar el archivo por API Gateway (límite 10MB).
+        """
+        storage_path = self.generate_file_path(solicitud_id, filename, doc_type)
+        try:
+            presigned_url = self.s3_client.generate_presigned_url(
+                'put_object',
+                Params={
+                    'Bucket': self.bucket_name,
+                    'Key': storage_path,
+                    'ContentType': content_type,
+                },
+                ExpiresIn=expiration,
+                HttpMethod='PUT'
+            )
+            return {
+                'upload_url': presigned_url,
+                'storage_path': storage_path,
+                'filename': filename,
+                'content_type': content_type,
+                'doc_type': doc_type,
+            }
+        except ClientError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al generar presigned URL: {e.response['Error']['Message']}"
+            )
+
     def delete_file(self, storage_path: str) -> bool:
         """
         Eliminar archivo de S3
