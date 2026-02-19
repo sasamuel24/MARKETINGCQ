@@ -223,7 +223,8 @@ export default function Dashboard() {
   });
 
   const filteredAllSolicitudes = allSolicitudes.filter((sol) => {
-    const matchesSearch = sol.title.toLowerCase().includes(globalSearchTerm.toLowerCase());
+    const matchesSearch = sol.title.toLowerCase().includes(globalSearchTerm.toLowerCase()) ||
+                          sol.id.toString().includes(globalSearchTerm.trim());
     const matchesStatus = globalStatusFilter === "ALL" || sol.state.id === parseInt(globalStatusFilter);
     const matchesArea = globalAreaFilter === "ALL" || sol.area.id === parseInt(globalAreaFilter);
     return matchesSearch && matchesStatus && matchesArea;
@@ -759,7 +760,7 @@ export default function Dashboard() {
                 <div className="flex flex-col md:flex-row gap-4 mb-4">
                   <Input
                     className="md:w-1/3"
-                    placeholder="Buscar por nombre..."
+                    placeholder="Buscar por nombre o ID..."
                     value={globalSearchTerm}
                     onChange={(e) => setGlobalSearchTerm(e.target.value)}
                   />
