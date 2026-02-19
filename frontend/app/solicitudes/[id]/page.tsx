@@ -1006,7 +1006,3 @@ export default function SolicitudDetailPage() {
     </div>
   );
 }
-
-export function generateStaticParams() {
-  return [{ id: 'placeholder' }];
-}
