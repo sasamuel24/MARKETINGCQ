@@ -622,15 +622,16 @@ export default function Dashboard() {
               </div>
               <CardContent className="pt-6">
                 {solicitudes.length > 0 ? (
+                  <div className="overflow-auto rounded-md border" style={{ maxHeight: 420 }}>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>ID</TableHead>
-                        <TableHead>Nombre del arte</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead>Etapa actual</TableHead>
-                        <TableHead>Última actualización</TableHead>
-                        <TableHead className="text-right">Acciones</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">ID</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Nombre del arte</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Estado</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Etapa actual</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Última actualización</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10 text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -676,6 +677,7 @@ export default function Dashboard() {
                         })}
                     </TableBody>
                   </Table>
+                  </div>
                 ) : (
                   <div className="flex h-40 items-center justify-center text-muted-foreground">
                     No tienes solicitudes creadas aún. Usa el formulario de arriba para crear una.
@@ -697,15 +699,16 @@ export default function Dashboard() {
               </div>
               <CardContent className="pt-6">
                 {solicitudes.length > 0 ? (
+                  <div className="overflow-auto rounded-md border" style={{ maxHeight: 420 }}>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Nombre del arte</TableHead>
-                        <TableHead>Fecha creación</TableHead>
-                        <TableHead>Área</TableHead>
-                        <TableHead>Etapa actual</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead className="text-right">Acciones</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Nombre del arte</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Fecha creación</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Área</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Etapa actual</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Estado</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10 text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -733,6 +736,7 @@ export default function Dashboard() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 ) : (
                   <div className="flex h-40 items-center justify-center text-muted-foreground">
                     No se encontraron resultados
@@ -741,7 +745,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            {/* Tabla global de seguimiento para APPROVERS */}
+            {/* Tabla global de seguimiento para APPROVERS */}}
             <Card className="shadow-lg border-0 overflow-hidden">
               <div className="bg-[#00829a] px-6 py-4">
                 <CardTitle className="text-white text-xl">Seguimiento global de solicitudes</CardTitle>
@@ -800,16 +804,17 @@ export default function Dashboard() {
                 </div>
 
                 {filteredAllSolicitudes.length > 0 ? (
+                  <div className="overflow-auto rounded-md border" style={{ maxHeight: 420 }}>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>ID</TableHead>
-                        <TableHead>Nombre del arte</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead>Etapa actual</TableHead>
-                        <TableHead>Área</TableHead>
-                        <TableHead>Última actualización</TableHead>
-                        <TableHead className="text-right">Acciones</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">ID</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Nombre del arte</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Estado</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Etapa actual</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Área</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Última actualización</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10 text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -839,8 +844,7 @@ export default function Dashboard() {
                         </TableRow>
                       ))}
                     </TableBody>
-                  </Table>
-                ) : (
+                  </Table>                  </div>                ) : (
                   <div className="flex h-40 items-center justify-center text-muted-foreground">
                     No se encontraron resultados
                   </div>
