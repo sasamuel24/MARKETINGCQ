@@ -170,8 +170,8 @@ export default function Dashboard() {
     }
   };
 
-  const fetchSolicitudes = async (currentUser: User, token: string) => {
-    setLoading(true);
+  const fetchSolicitudes = async (currentUser: User, token: string, silent = false) => {
+    if (!silent) setLoading(true);
     let url = `${API_URL}/api/v1/solicitudes?page=1&page_size=100`;
     if (currentUser.role === "APPROVER" || currentUser.rol_id === 3) {
       // Filtrar solo solicitudes pendientes de aprobación (no incluir APROBADO_FINAL ni RECHAZADO)
@@ -366,9 +366,9 @@ export default function Dashboard() {
         console.log("Archivos subidos exitosamente");
       }
       
-      // Refresh solicitudes list
+      // Refresh solicitudes list (silent: no mostrar pantalla en blanco)
       if (user) {
-        await fetchSolicitudes(user, token!);
+        await fetchSolicitudes(user, token!, true);
       }
       
       // Reset form including file input

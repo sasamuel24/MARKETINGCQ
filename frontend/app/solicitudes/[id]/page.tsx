@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Download, FileText, Calendar, User, Building2, Workflow, Eye } from "lucide-react";
+import { ToastContainer, ToastData } from "@/components/ui/toast-simple";
 import {
   Dialog,
   DialogContent,
@@ -96,6 +97,16 @@ export default function SolicitudDetailPage() {
   
   // Estados para eventos/comentarios
   const [eventos, setEventos] = useState<any[]>([]);
+
+  // Toast notifications
+  const [toasts, setToasts] = useState<ToastData[]>([]);
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+  const removeToast = (id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -221,7 +232,7 @@ export default function SolicitudDetailPage() {
       
     } catch (err) {
       console.error("Error downloading file:", err);
-      alert("Error al descargar el archivo. Por favor, intenta nuevamente.");
+      showToast("Error al descargar el archivo. Por favor, intenta nuevamente.", "error");
     }
   };
 
@@ -265,7 +276,7 @@ export default function SolicitudDetailPage() {
       
     } catch (err) {
       console.error("Error loading preview:", err);
-      alert("Error al cargar la vista previa. Por favor, intenta nuevamente.");
+      showToast("Error al cargar la vista previa. Por favor, intenta nuevamente.", "error");
     } finally {
       setLoadingPreview(false);
     }
@@ -273,7 +284,7 @@ export default function SolicitudDetailPage() {
 
   const handleSolicitarAjustes = async () => {
     if (!ajustesComment.trim()) {
-      alert("Por favor, escribe un comentario explicando los ajustes necesarios");
+      showToast("Por favor, escribe un comentario explicando los ajustes necesarios", "error");
       return;
     }
 
@@ -303,11 +314,11 @@ export default function SolicitudDetailPage() {
       // Recargar eventos para mostrar el nuevo comentario
       fetchEventos(token!);
       
-      alert("Ajustes solicitados exitosamente. El creador ha sido notificado.");
+      showToast("Ajustes solicitados. El creador ha sido notificado.", "success");
 
     } catch (err) {
       console.error("Error solicitando ajustes:", err);
-      alert(err instanceof Error ? err.message : "Error al solicitar ajustes");
+      showToast(err instanceof Error ? err.message : "Error al solicitar ajustes", "error");
     } finally {
       setSubmittingAjustes(false);
     }
@@ -342,14 +353,14 @@ export default function SolicitudDetailPage() {
       
       // Mensaje según el nuevo estado
       if (updatedSolicitud.state.code === "APROBADO_FINAL") {
-        alert("Solicitud aprobada exitosamente. La solicitud ha completado todas las etapas.");
+        showToast("✓ Solicitud aprobada. Ha completado todas las etapas.", "success");
       } else {
-        alert(`Solicitud aprobada y avanzada a la siguiente etapa: ${updatedSolicitud.stage.label}`);
+        showToast(`✓ Aprobado — avanzó a etapa: ${updatedSolicitud.stage.label}`, "success");
       }
 
     } catch (err) {
       console.error("Error aprobando solicitud:", err);
-      alert(err instanceof Error ? err.message : "Error al aprobar solicitud");
+      showToast(err instanceof Error ? err.message : "Error al aprobar solicitud", "error");
     } finally {
       setSubmittingAprobar(false);
     }
@@ -357,7 +368,7 @@ export default function SolicitudDetailPage() {
 
   const handleRechazar = async () => {
     if (!rechazarComment.trim()) {
-      alert("Por favor, escribe el motivo del rechazo");
+      showToast("Por favor, escribe el motivo del rechazo", "error");
       return;
     }
 
@@ -387,11 +398,11 @@ export default function SolicitudDetailPage() {
       // Recargar eventos para mostrar el nuevo comentario
       fetchEventos(token!);
       
-      alert("Solicitud rechazada. El creador ha sido notificado.");
+      showToast("Solicitud rechazada. El creador ha sido notificado.", "success");
 
     } catch (err) {
       console.error("Error rechazando solicitud:", err);
-      alert(err instanceof Error ? err.message : "Error al rechazar solicitud");
+      showToast(err instanceof Error ? err.message : "Error al rechazar solicitud", "error");
     } finally {
       setSubmittingRechazar(false);
     }
@@ -1002,6 +1013,7 @@ export default function SolicitudDetailPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
       </div>
     </div>
   );

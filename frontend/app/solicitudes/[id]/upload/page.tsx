@@ -4,6 +4,7 @@ import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ArrowLeft, Upload, X, FileText } from "lucide-react";
+import { ToastContainer, ToastData } from "@/components/ui/toast-simple";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -25,6 +26,15 @@ export default function UploadNewVersionPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastData[]>([]);
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+  const removeToast = (id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -68,7 +78,7 @@ export default function UploadNewVersionPage() {
 
   const handleSubmit = async () => {
     if (files.length === 0) {
-      alert("Por favor selecciona al menos un archivo");
+      showToast("Por favor selecciona al menos un archivo", "error");
       return;
     }
 
@@ -96,12 +106,11 @@ export default function UploadNewVersionPage() {
         throw new Error("Error al actualizar estado");
       }
 
-      alert("Archivos subidos exitosamente. La solicitud ha sido enviada nuevamente para revisión.");
       router.push(`/solicitudes/${solicitudId}`);
 
     } catch (err) {
       console.error("Error:", err);
-      alert(err instanceof Error ? err.message : "Error al subir archivos");
+      showToast(err instanceof Error ? err.message : "Error al subir archivos", "error");
     } finally {
       setUploading(false);
     }
@@ -256,5 +265,6 @@ export default function UploadNewVersionPage() {
         </Card>
       </div>
     </div>
+    <ToastContainer toasts={toasts} onRemove={removeToast} />
   );
 }
