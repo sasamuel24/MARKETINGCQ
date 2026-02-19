@@ -745,7 +745,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            {/* Tabla global de seguimiento para APPROVERS */}}
+            {/* Tabla global de seguimiento para APPROVERS */}
             <Card className="shadow-lg border-0 overflow-hidden">
               <div className="bg-[#00829a] px-6 py-4">
                 <CardTitle className="text-white text-xl">Seguimiento global de solicitudes</CardTitle>
