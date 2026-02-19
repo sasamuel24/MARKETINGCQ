@@ -156,6 +156,7 @@ export default function UploadNewVersionPage() {
   }
 
   return (
+    <>
     <div className="flex w-full flex-col bg-muted/40 p-4 md:p-10">
       <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full">
         {/* Header */}
@@ -266,5 +267,6 @@ export default function UploadNewVersionPage() {
       </div>
     </div>
     <ToastContainer toasts={toasts} onRemove={removeToast} />
+    </>
   );
 }
