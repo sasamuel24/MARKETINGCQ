@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Upload, FileText, X } from "lucide-react";
+import { ToastContainer, ToastData } from "@/components/ui/toast-simple";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -93,6 +94,16 @@ export default function Dashboard() {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [toasts, setToasts] = useState<ToastData[]>([]);
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
+  const removeToast = (id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -311,7 +322,7 @@ export default function Dashboard() {
       console.log("Estado pendiente encontrado:", pendingEstado);
       
       if (!firstEtapa || !pendingEstado) {
-        alert("Error: No se encontró la configuración inicial para el área seleccionada. Verifica que existan etapas y estados en el sistema.");
+        showToast("Error: No se encontró la configuración inicial. Verifica que existan etapas y estados en el sistema.", "error");
         setSubmitting(false);
         return;
       }
@@ -372,11 +383,11 @@ export default function Dashboard() {
       const fileInput = document.getElementById("files") as HTMLInputElement;
       if (fileInput) fileInput.value = "";
       
-      alert(`¡Solicitud creada exitosamente!\n\nID: ${newSolicitud.id}\nTítulo: ${newSolicitud.title}\nEstado: ${newSolicitud.state?.label || "Pendiente"}\nArchivos subidos: ${formData.files.length}`);
+      showToast(`✓ Solicitud #${newSolicitud.id} creada — "${newSolicitud.title}" · ${formData.files.length} archivo(s) subido(s)`);
       
     } catch (error) {
       console.error("Error creating solicitud:", error);
-      alert(error instanceof Error ? error.message : "Error al crear la solicitud");
+      showToast(error instanceof Error ? error.message : "Error al crear la solicitud", "error");
     } finally {
       setSubmitting(false);
     }
@@ -852,6 +863,7 @@ export default function Dashboard() {
         )}
         </div>
       </div>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
