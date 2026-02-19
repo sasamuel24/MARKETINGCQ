@@ -273,3 +273,7 @@ export default function UploadNewVersionPage() {
     </div>
   );
 }
+
+export function generateStaticParams() {
+  return [{ id: 'placeholder' }];
+}
