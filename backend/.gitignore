@@ -46,6 +46,7 @@ htmlcov/
 # Database
 *.db
 *.sqlite3
+*.sql
 
 # Storage
 storage/uploads/*
