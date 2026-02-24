@@ -288,6 +288,7 @@ class Solicitud(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     es_para_cafe = Column(Boolean, nullable=True)  # Solo aplica cuando el área es "Operaciones y Calidad"
+    es_para_exportacion = Column(Boolean, nullable=True)  # Si el arte va a exportación (incluye aprobador ID 19)
     
     # Foreign Keys
     area_id = Column(Integer, ForeignKey("areas.id", ondelete="RESTRICT"), nullable=False, index=True)

@@ -66,6 +66,7 @@ class SolicitudCreate(SolicitudBase):
     stage_id: int = Field(..., gt=0, description="ID de la etapa (stage)")
     status_id: int = Field(..., gt=0, description="ID del estado (state)")
     es_para_cafe: Optional[bool] = Field(None, description="Indica si el producto es para café (solo aplica en Operaciones y Calidad)")
+    es_para_exportacion: Optional[bool] = Field(None, description="Indica si el arte va a exportación (incluye aprobador de exportaciones)")
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -145,6 +146,7 @@ class SolicitudResponse(SolicitudBase):
     status_id: int = Field(..., description="ID del estado")
     created_by_user_id: int = Field(..., description="ID del usuario creador")
     es_para_cafe: Optional[bool] = Field(None, description="Indica si el producto es para café")
+    es_para_exportacion: Optional[bool] = Field(None, description="Indica si el arte va a exportación")
     created_at: datetime = Field(..., description="Fecha de creación")
     updated_at: datetime = Field(..., description="Fecha de actualización")
     

@@ -88,6 +88,9 @@ class SolicitudRepository:
             # El usuario 10 (aprobador de café) solo ve solicitudes marcadas como café
             if approver_user_id == 10:
                 query = query.filter(Solicitud.es_para_cafe == True)
+            # El usuario 19 (aprobador de exportación) solo ve solicitudes marcadas como exportación
+            if approver_user_id == 19:
+                query = query.filter(Solicitud.es_para_exportacion == True)
         
         return query.order_by(Solicitud.created_at.desc()).offset(skip).limit(limit).all()
     
@@ -128,6 +131,9 @@ class SolicitudRepository:
             # El usuario 10 (aprobador de café) solo ve solicitudes marcadas como café
             if approver_user_id == 10:
                 query = query.filter(Solicitud.es_para_cafe == True)
+            # El usuario 19 (aprobador de exportación) solo ve solicitudes marcadas como exportación
+            if approver_user_id == 19:
+                query = query.filter(Solicitud.es_para_exportacion == True)
         
         return query.count()
     
@@ -152,7 +158,8 @@ class SolicitudRepository:
             stage_id=solicitud_data.stage_id,
             status_id=solicitud_data.status_id,
             created_by_user_id=created_by_user_id,
-            es_para_cafe=solicitud_data.es_para_cafe
+            es_para_cafe=solicitud_data.es_para_cafe,
+            es_para_exportacion=solicitud_data.es_para_exportacion
         )
         self.db.add(db_solicitud)
         self.db.commit()

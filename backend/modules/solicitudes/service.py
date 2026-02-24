@@ -160,6 +160,9 @@ class SolicitudService:
                 # El usuario 10 solo recibe notificaciones si el producto es para café
                 if aprobador_rel.user_id == 10 and not solicitud_data.es_para_cafe:
                     continue
+                # El usuario 19 solo recibe notificaciones si el arte va a exportación
+                if aprobador_rel.user_id == 19 and not solicitud_data.es_para_exportacion:
+                    continue
                 user = self.user_repository.get_by_id(aprobador_rel.user_id)
                 if user and user.email:
                     emails_aprobadores.append(user.email)
@@ -500,6 +503,7 @@ class SolicitudService:
             total_aprobadores = sum(
                 1 for a in aprobadores_etapa
                 if not (a.user_id == 10 and not solicitud.es_para_cafe)
+                and not (a.user_id == 19 and not solicitud.es_para_exportacion)
             )
             
             # Contar cuántos ya aprobaron (incluyendo esta aprobación)
