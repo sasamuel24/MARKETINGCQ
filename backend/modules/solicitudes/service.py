@@ -157,6 +157,9 @@ class SolicitudService:
             for aprobador_rel in aprobadores:
                 if aprobador_rel.user_id in settings.WEEKLY_SUMMARY_USER_IDS:
                     continue  # Este usuario solo recibe el resumen semanal
+                # El usuario 10 solo recibe notificaciones si el producto es para café
+                if aprobador_rel.user_id == 10 and not solicitud_data.es_para_cafe:
+                    continue
                 user = self.user_repository.get_by_id(aprobador_rel.user_id)
                 if user and user.email:
                     emails_aprobadores.append(user.email)
@@ -490,9 +493,14 @@ class SolicitudService:
         # Verificar si la etapa actual requiere aprobación de TODOS (approval_mode: "ALL")
         if etapa_actual.approval_mode == "ALL":
             # Contar cuántos aprobadores hay en esta etapa
-            total_aprobadores = self.repository.db.query(EtapaAprobador)\
+            # El usuario 10 (aprobador de café) solo cuenta si la solicitud es para café
+            aprobadores_etapa = self.repository.db.query(EtapaAprobador)\
                 .filter(EtapaAprobador.etapa_id == solicitud.stage_id)\
-                .count()
+                .all()
+            total_aprobadores = sum(
+                1 for a in aprobadores_etapa
+                if not (a.user_id == 10 and not solicitud.es_para_cafe)
+            )
             
             # Contar cuántos ya aprobaron (incluyendo esta aprobación)
             aprobaciones_actuales = self.repository.db.query(SolicitudEvento)\

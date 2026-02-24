@@ -28,7 +28,7 @@ def get_user_service(db: Session = Depends(get_db)) -> UserService:
 @router.get("", response_model=UserListResponse, status_code=status.HTTP_200_OK)
 async def get_users(
     page: int = Query(1, ge=1, description="Número de página"),
-    page_size: int = Query(10, ge=1, le=100, description="Tamaño de página"),
+    page_size: int = Query(100, ge=1, le=1000, description="Tamaño de página"),
     service: UserService = Depends(get_user_service),
     _: str = Depends(get_current_user_id)  # Requiere autenticación
 ):

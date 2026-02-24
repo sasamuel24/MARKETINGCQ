@@ -64,6 +64,7 @@ interface NewSolicitudForm {
   nombre_arte: string;
   descripcion: string;
   area_id: string;
+  es_para_cafe: "" | "si" | "no";
   files: File[];
 }
 
@@ -90,6 +91,7 @@ export default function Dashboard() {
     nombre_arte: "",
     descripcion: "",
     area_id: "",
+    es_para_cafe: "",
     files: []
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -280,6 +282,13 @@ export default function Dashboard() {
     if (!formData.area_id) {
       errors.area_id = "Debe seleccionar un área";
     }
+
+    // Si es área de Operaciones y Calidad, se debe responder la pregunta de café
+    const selectedArea = areas.find(a => a.id === parseInt(formData.area_id));
+    const isOpCalidad = selectedArea?.nombre?.toLowerCase().includes("operacion");
+    if (isOpCalidad && !formData.es_para_cafe) {
+      errors.es_para_cafe = "Debe indicar si el producto es para café";
+    }
     
     if (formData.descripcion.length > 500) {
       errors.descripcion = "La descripción no puede exceder 500 caracteres";
@@ -329,13 +338,19 @@ export default function Dashboard() {
       }
       
       // Create solicitud
-      const solicitudData = {
+      const solicitudData: Record<string, unknown> = {
         title: formData.nombre_arte,
         description: formData.descripcion || undefined,
         area_id: areaId,
         stage_id: firstEtapa.id,
         status_id: pendingEstado.id
       };
+
+      // Incluir es_para_cafe solo si el área es Operaciones y Calidad
+      const selectedArea = areas.find(a => a.id === areaId);
+      if (selectedArea?.nombre?.toLowerCase().includes("operacion")) {
+        solicitudData.es_para_cafe = formData.es_para_cafe === "si";
+      }
       
       console.log("Enviando solicitud:", solicitudData);
       
@@ -377,6 +392,7 @@ export default function Dashboard() {
         nombre_arte: "",
         descripcion: "",
         area_id: "",
+        es_para_cafe: "",
         files: []
       });
       
@@ -493,7 +509,7 @@ export default function Dashboard() {
                       <select
                         id="area_id"
                         value={formData.area_id}
-                        onChange={(e) => setFormData(prev => ({ ...prev, area_id: e.target.value }))}
+                        onChange={(e) => setFormData(prev => ({ ...prev, area_id: e.target.value, es_para_cafe: "" }))}
                         className={`h-10 w-full rounded-md border-2 ${formErrors.area_id ? "border-red-500" : "border-input"} bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-colors appearance-none cursor-pointer`}
                         style={{
                           backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2300829a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
@@ -522,6 +538,50 @@ export default function Dashboard() {
                       )}
                     </div>
                   </div>
+
+                  {/* Pregunta de Café: solo aparece cuando el área es Operaciones y Calidad */}
+                  {(() => {
+                    const selectedArea = areas.find(a => a.id === parseInt(formData.area_id));
+                    const isOpCalidad = selectedArea?.nombre?.toLowerCase().includes("operacion");
+                    if (!isOpCalidad) return null;
+                    return (
+                      <div className="space-y-3 rounded-lg border-2 border-[#00829a]/30 bg-[#00829a]/5 p-4">
+                        <Label className="font-semibold text-[#00829a]">
+                          ¿El producto es para Café? *
+                        </Label>
+                        <p className="text-xs text-muted-foreground -mt-1">
+                          Esto determina si se requiere la aprobación del responsable de control de calidad de café.
+                        </p>
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="es_para_cafe"
+                              value="si"
+                              checked={formData.es_para_cafe === "si"}
+                              onChange={() => setFormData(prev => ({ ...prev, es_para_cafe: "si" }))}
+                              className="accent-[#00829a] w-4 h-4"
+                            />
+                            <span className="font-medium text-sm">Sí, es para Café</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="es_para_cafe"
+                              value="no"
+                              checked={formData.es_para_cafe === "no"}
+                              onChange={() => setFormData(prev => ({ ...prev, es_para_cafe: "no" }))}
+                              className="accent-[#00829a] w-4 h-4"
+                            />
+                            <span className="font-medium text-sm">No, no es para Café</span>
+                          </label>
+                        </div>
+                        {formErrors.es_para_cafe && (
+                          <p className="text-sm text-red-500">{formErrors.es_para_cafe}</p>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Descripción */}
                   <div className="space-y-2">

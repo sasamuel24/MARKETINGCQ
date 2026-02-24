@@ -85,6 +85,9 @@ class SolicitudRepository:
             query = query.join(EtapaAprobador, EtapaAprobador.etapa_id == Solicitud.stage_id)\
                          .filter(EtapaAprobador.user_id == approver_user_id)\
                          .filter(EtapaAprobador.is_active == True)
+            # El usuario 10 (aprobador de café) solo ve solicitudes marcadas como café
+            if approver_user_id == 10:
+                query = query.filter(Solicitud.es_para_cafe == True)
         
         return query.order_by(Solicitud.created_at.desc()).offset(skip).limit(limit).all()
     
@@ -122,6 +125,9 @@ class SolicitudRepository:
             query = query.join(EtapaAprobador, EtapaAprobador.etapa_id == Solicitud.stage_id)\
                          .filter(EtapaAprobador.user_id == approver_user_id)\
                          .filter(EtapaAprobador.is_active == True)
+            # El usuario 10 (aprobador de café) solo ve solicitudes marcadas como café
+            if approver_user_id == 10:
+                query = query.filter(Solicitud.es_para_cafe == True)
         
         return query.count()
     
@@ -145,7 +151,8 @@ class SolicitudRepository:
             area_id=solicitud_data.area_id,
             stage_id=solicitud_data.stage_id,
             status_id=solicitud_data.status_id,
-            created_by_user_id=created_by_user_id
+            created_by_user_id=created_by_user_id,
+            es_para_cafe=solicitud_data.es_para_cafe
         )
         self.db.add(db_solicitud)
         self.db.commit()
