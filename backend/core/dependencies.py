@@ -62,28 +62,27 @@ async def get_current_user(
     db: Annotated[Session, Depends(get_db)]
 ):
     """
-    Obtener el usuario completo desde la base de datos
-    
-    Nota: Este es un placeholder. En producción, deberías importar
-    el modelo User y hacer la query real.
-    
+    Obtener el usuario completo desde la base de datos con su rol y área.
+
     Returns:
-        User object
+        User object con relaciones rol y area cargadas
     """
-    # TODO: Implementar cuando tengas el modelo User
-    # from modules.users.models import User
-    # user = db.query(User).filter(User.id == user_id).first()
-    # if not user:
-    #     raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    # return user
-    
-    # Por ahora, retornamos un dict simple
-    return {
-        "id": user_id,
-        "email": "user@example.com",
-        "is_active": True,
-        "role": "user"
-    }
+    from db.models import User
+    from sqlalchemy.orm import joinedload
+
+    user = db.query(User).options(
+        joinedload(User.rol),
+        joinedload(User.area)
+    ).filter(User.id == int(user_id)).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario no encontrado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
 
 
 class PaginationParams:

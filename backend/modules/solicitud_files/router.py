@@ -14,6 +14,7 @@ from modules.solicitud_files.schemas import (
 )
 from modules.solicitud_files.service import SolicitudFileService
 from core.dependencies import get_current_user_id
+from core.storage import get_s3_storage, S3StorageService
 from db.session import get_db
 
 
@@ -178,16 +179,24 @@ async def update_solicitud_file(
 async def delete_solicitud_file(
     file_id: int,
     service: SolicitudFileService = Depends(get_solicitud_file_service),
-    _: str = Depends(get_current_user_id)  # Requiere autenticación
+    s3_service: S3StorageService = Depends(get_s3_storage),
+    _: str = Depends(get_current_user_id)
 ):
     """
-    Eliminar un archivo
-    
+    Eliminar un archivo de la BD y de S3.
+
     - **file_id**: ID del archivo a eliminar
-    
-    IMPORTANTE: Esta operación solo elimina el registro de la base de datos.
-    Debe implementar la eliminación del archivo físico del storage por separado.
+
     Requiere autenticación.
     """
+    # Obtener el archivo antes de borrarlo para conocer el storage_path
+    file = service.get_file_by_id(file_id)
+
+    # Intentar eliminar de S3 (no falla si el objeto ya no existe)
+    try:
+        s3_service.delete_file(file.storage_path)
+    except Exception:
+        pass
+
     service.delete_file(file_id)
     return None

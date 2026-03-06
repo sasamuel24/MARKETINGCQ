@@ -13,14 +13,17 @@ from modules.solicitudes.schemas import (
     SolicitudListResponse,
     SolicitudAjusteRequest,
     SolicitudAprobarRequest,
-    SolicitudRechazarRequest
+    SolicitudRechazarRequest,
+    SolicitudCommentRequest,
 )
 from modules.solicitudes.service import SolicitudService
 from modules.solicitud_files.service import SolicitudFileService
 from modules.solicitud_files.schemas import SolicitudFileCreate
-from core.dependencies import get_current_user_id
+from core.dependencies import get_current_user_id, get_current_user
 from core.storage import get_s3_storage, S3StorageService
 from db.session import get_db
+
+CREATOR_ROLE_ID = 2
 
 
 router = APIRouter(prefix="/solicitudes", tags=["Solicitudes"])
@@ -41,29 +44,27 @@ async def get_solicitudes(
     created_by_user_id: Optional[int] = Query(None, description="Filtrar por usuario creador"),
     check_approver: bool = Query(False, description="Si es True, filtra solicitudes donde el usuario actual es aprobador"),
     service: SolicitudService = Depends(get_solicitud_service),
-    current_user_id: str = Depends(get_current_user_id)  # Requiere autenticación
+    current_user=Depends(get_current_user)
 ):
     """
-    Obtener lista de solicitudes con paginación y filtros
-    
-    - **page**: Número de página (por defecto 1)
-    - **page_size**: Tamaño de página (por defecto 10, máximo 100)
-    - **area_id**: Filtrar por área específica (opcional)
-    - **stage_id**: Filtrar por etapa específica (opcional)
-    - **status_id**: Filtrar por estado específico (opcional)
-    - **created_by_user_id**: Filtrar por usuario creador (opcional)
-    - **check_approver**: Si es True, retorna solo solicitudes donde el usuario actual es aprobador de la etapa actual
-    
-    Las solicitudes se retornan ordenadas por fecha de creación descendente.
-    Incluye información completa de área, etapa (stage), estado (state) y usuario creador.
-    Requiere autenticación.
+    Obtener lista de solicitudes con paginación y filtros.
+
+    Si el usuario tiene rol CREATOR, se aplica automáticamente:
+    - Solo ve las solicitudes que él mismo creó
+    - Solo ve las solicitudes de su área
     """
     skip = (page - 1) * page_size
-    
-    approver_user_id = int(current_user_id) if check_approver else None
-    
+
+    # CREATOR: forzar filtro por su propio usuario y su área
+    if current_user.rol_id == CREATOR_ROLE_ID:
+        created_by_user_id = current_user.id
+        area_id = current_user.area_id
+        approver_user_id = None
+    else:
+        approver_user_id = current_user.id if check_approver else None
+
     solicitudes, total = service.get_all_solicitudes(
-        skip=skip, 
+        skip=skip,
         limit=page_size,
         area_id=area_id,
         stage_id=stage_id,
@@ -71,7 +72,7 @@ async def get_solicitudes(
         created_by_user_id=created_by_user_id,
         approver_user_id=approver_user_id
     )
-    
+
     return SolicitudListResponse(
         solicitudes=solicitudes,
         total=total,
@@ -118,17 +119,23 @@ async def get_solicitudes_by_user(
 async def get_solicitud(
     solicitud_id: int,
     service: SolicitudService = Depends(get_solicitud_service),
-    _: str = Depends(get_current_user_id)  # Requiere autenticación
+    current_user=Depends(get_current_user)
 ):
     """
-    Obtener una solicitud por ID
-    
-    - **solicitud_id**: ID de la solicitud a obtener
-    
-    Incluye información completa de área, etapa (stage), estado (state) y usuario creador.
-    Requiere autenticación.
+    Obtener una solicitud por ID.
+
+    Si el usuario tiene rol CREATOR, solo puede acceder a sus propias solicitudes de su área.
     """
-    return service.get_solicitud_by_id(solicitud_id)
+    solicitud = service.get_solicitud_by_id(solicitud_id)
+
+    if current_user.rol_id == CREATOR_ROLE_ID:
+        if solicitud.created_by.id != current_user.id or solicitud.area.id != current_user.area_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes acceso a esta solicitud"
+            )
+
+    return solicitud
 
 
 @router.post("", response_model=SolicitudDetailResponse, status_code=status.HTTP_201_CREATED)
@@ -476,6 +483,30 @@ async def solicitar_ajustes(
         solicitud_id=solicitud_id,
         comment=ajuste_request.comment,
         actor_user_id=int(current_user_id)
+    )
+
+
+@router.post("/{solicitud_id}/comentar", status_code=status.HTTP_201_CREATED)
+async def comentar_solicitud(
+    solicitud_id: int,
+    comment_request: SolicitudCommentRequest,
+    service: SolicitudService = Depends(get_solicitud_service),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    Agregar un comentario a una solicitud sin modificar su estado.
+
+    - **solicitud_id**: ID de la solicitud
+    - **comment**: Texto del comentario
+
+    Registra un evento de tipo COMMENTED y no cambia estado ni etapa.
+    Requiere autenticación.
+    """
+    return service.comentar_solicitud(
+        solicitud_id=solicitud_id,
+        comment=comment_request.comment,
+        actor_user_id=int(current_user_id),
+        categoria=comment_request.categoria,
     )
 
 

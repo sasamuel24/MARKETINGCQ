@@ -18,6 +18,7 @@ interface User {
   full_name: string;
   role: string;
   rol_id: number;
+  area_id?: number;
 }
 
 interface Estado {
@@ -67,6 +68,7 @@ interface NewSolicitudForm {
   es_para_cafe: "" | "si" | "no";
   es_para_exportacion: "" | "si" | "no";
   files: File[];
+  categoria: "" | "reposteria" | "bebidas";
 }
 
 export default function Dashboard() {
@@ -94,7 +96,8 @@ export default function Dashboard() {
     area_id: "",
     es_para_cafe: "",
     es_para_exportacion: "",
-    files: []
+    files: [],
+    categoria: ""
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -162,7 +165,7 @@ export default function Dashboard() {
 
   const fetchEtapas = async (token: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/etapas`, {
+      const res = await fetch(`${API_URL}/api/v1/etapas?page_size=100`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -184,6 +187,10 @@ export default function Dashboard() {
       fetchAllSolicitudes(token);
     } else {
       url += `&created_by_user_id=${currentUser.id}`;
+      // Creadores de PRODUCCION_BEBIDAS_PASTELERIA también ven el seguimiento global
+      if (currentUser.area_id === 4) {
+        fetchAllSolicitudes(token);
+      }
     }
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -274,29 +281,39 @@ export default function Dashboard() {
 
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
-    
+    const isInnovacionForm = user?.area_id === 4 && (user?.role === "CREATOR" || user?.rol_id === 2);
+
     if (!formData.nombre_arte.trim()) {
-      errors.nombre_arte = "El nombre del arte es requerido";
+      errors.nombre_arte = isInnovacionForm
+        ? "El nombre de la innovación es requerido"
+        : "El nombre del arte es requerido";
     } else if (formData.nombre_arte.length > 80) {
       errors.nombre_arte = "El nombre no puede exceder 80 caracteres";
     }
-    
-    if (!formData.area_id) {
-      errors.area_id = "Debe seleccionar un área";
+
+    if (isInnovacionForm) {
+      if (!formData.categoria) {
+        errors.categoria = "Debe seleccionar una categoría";
+      }
+    } else {
+      if (!formData.area_id) {
+        errors.area_id = "Debe seleccionar un área";
+      }
+
+      // Si es área de Operaciones y Calidad, se debe responder ambas preguntas
+      const selectedArea = areas.find(a => a.id === parseInt(formData.area_id));
+      const isOpCalidad = selectedArea?.nombre?.toLowerCase().includes("operacion");
+      if (isOpCalidad && !formData.es_para_cafe) {
+        errors.es_para_cafe = "Debe indicar si el producto es para café";
+      }
+      if (isOpCalidad && !formData.es_para_exportacion) {
+        errors.es_para_exportacion = "Debe indicar si el arte va a exportación";
+      }
     }
 
-    // Si es área de Operaciones y Calidad, se debe responder ambas preguntas
-    const selectedArea = areas.find(a => a.id === parseInt(formData.area_id));
-    const isOpCalidad = selectedArea?.nombre?.toLowerCase().includes("operacion");
-    if (isOpCalidad && !formData.es_para_cafe) {
-      errors.es_para_cafe = "Debe indicar si el producto es para café";
-    }
-    if (isOpCalidad && !formData.es_para_exportacion) {
-      errors.es_para_exportacion = "Debe indicar si el arte va a exportación";
-    }
-    
-    if (formData.descripcion.length > 500) {
-      errors.descripcion = "La descripción no puede exceder 500 caracteres";
+    const maxDesc = isInnovacionForm ? 900 : 500;
+    if (formData.descripcion.length > maxDesc) {
+      errors.descripcion = `La descripción no puede exceder ${maxDesc} caracteres`;
     }
     
     if (formData.files.length === 0) {
@@ -317,7 +334,8 @@ export default function Dashboard() {
     
     try {
       // Get first etapa by order for the selected area
-      const areaId = parseInt(formData.area_id);
+      const isInnovacionForm = user?.area_id === 4 && (user?.role === "CREATOR" || user?.rol_id === 2);
+      const areaId = isInnovacionForm ? 4 : parseInt(formData.area_id);
       const firstEtapa = etapas.find(etapa => 
         etapa.area_id === areaId && etapa.order === 1
       );
@@ -352,8 +370,11 @@ export default function Dashboard() {
       };
 
       // Incluir es_para_cafe y es_para_exportacion solo si el área es Operaciones y Calidad
+      // Para el formulario de innovación (área 4), usar categoria para es_para_cafe
       const selectedArea = areas.find(a => a.id === areaId);
-      if (selectedArea?.nombre?.toLowerCase().includes("operacion")) {
+      if (isInnovacionForm) {
+        solicitudData.es_para_cafe = formData.categoria === "bebidas";
+      } else if (selectedArea?.nombre?.toLowerCase().includes("operacion")) {
         solicitudData.es_para_cafe = formData.es_para_cafe === "si";
         solicitudData.es_para_exportacion = formData.es_para_exportacion === "si";
       }
@@ -400,7 +421,8 @@ export default function Dashboard() {
         area_id: "",
         es_para_cafe: "",
         es_para_exportacion: "",
-        files: []
+        files: [],
+        categoria: ""
       });
       
       // Reset file input element
@@ -425,6 +447,7 @@ export default function Dashboard() {
 
   const isApprover = user.role === "APPROVER" || user.rol_id === 3;
   const isCreator = user.role === "CREATOR" || user.rol_id === 2;
+  const isInnovacionCreator = isCreator && user.area_id === 4;
 
   return (
     <div className="flex w-full flex-col min-h-screen">
@@ -480,7 +503,275 @@ export default function Dashboard() {
         <div className="flex flex-col gap-6">
           {isCreator ? (
           <>
-            {/* CREATOR VIEW: New Solicitud Form */}
+            {isInnovacionCreator ? (
+            <>
+              {/* INNOVACIÓN CREATOR VIEW: Formulario de Innovación */}
+              <Card className="shadow-lg border-0 overflow-hidden">
+                <div className="bg-gradient-to-r from-[#00829a] to-[#00a3b4] px-6 py-4">
+                  <CardTitle className="text-white text-xl font-bold uppercase tracking-wide">Nueva solicitud</CardTitle>
+                  <CardDescription className="text-white/90 font-normal">
+                    Crea una solicitud de Innovación
+                  </CardDescription>
+                </div>
+                <CardContent className="pt-6">
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {/* Nombre de la innovación */}
+                      <div className="space-y-2">
+                        <Label htmlFor="nombre_arte" className="font-medium">Nombre de la innovación</Label>
+                        <Input
+                          id="nombre_arte"
+                          placeholder="Ej: Nueva bolsa de café especial"
+                          value={formData.nombre_arte}
+                          onChange={(e) => setFormData(prev => ({ ...prev, nombre_arte: e.target.value }))}
+                          maxLength={80}
+                          className={formErrors.nombre_arte ? "border-red-500" : ""}
+                        />
+                        {formErrors.nombre_arte && (
+                          <p className="text-sm text-red-500">{formErrors.nombre_arte}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {formData.nombre_arte.length}/80 caracteres
+                        </p>
+                      </div>
+
+                      {/* Categoría */}
+                      <div className="space-y-2">
+                        <Label className="font-medium">Categoría</Label>
+                        <div className="flex flex-col gap-2 pt-1">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="categoria"
+                              value="reposteria"
+                              checked={formData.categoria === "reposteria"}
+                              onChange={() => setFormData(prev => ({ ...prev, categoria: "reposteria" }))}
+                              className="accent-[#00829a] w-4 h-4"
+                            />
+                            <span className="font-medium text-sm">Repostería</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="categoria"
+                              value="bebidas"
+                              checked={formData.categoria === "bebidas"}
+                              onChange={() => setFormData(prev => ({ ...prev, categoria: "bebidas" }))}
+                              className="accent-[#00829a] w-4 h-4"
+                            />
+                            <span className="font-medium text-sm">Bebidas</span>
+                          </label>
+                        </div>
+                        {formErrors.categoria && (
+                          <p className="text-sm text-red-500">{formErrors.categoria}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Descripción */}
+                    <div className="space-y-2">
+                      <Label htmlFor="descripcion" className="font-medium">Descripción</Label>
+                      <textarea
+                        id="descripcion"
+                        placeholder="Detalles adicionales sobre la solicitud..."
+                        value={formData.descripcion}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
+                        maxLength={900}
+                        rows={4}
+                        className={`w-full min-w-0 rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 md:text-sm ${formErrors.descripcion ? "border-red-500" : "border-input"}`}
+                      />
+                      {formErrors.descripcion && (
+                        <p className="text-sm text-red-500">{formErrors.descripcion}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {formData.descripcion.length}/900 caracteres
+                      </p>
+                    </div>
+
+                    {/* File Upload con nota lateral */}
+                    <div className="flex flex-col md:flex-row gap-4 items-start">
+                      <div className="flex-1 space-y-2">
+                        <Label htmlFor="files" className="font-medium">Archivos adjuntos *</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id="files"
+                            type="file"
+                            multiple
+                            accept="image/*,.pdf,.xlsx,.xls"
+                            onChange={handleFileChange}
+                            className="hidden"
+                          />
+                          <Button
+                            type="button"
+                            onClick={() => document.getElementById("files")?.click()}
+                            className="w-full bg-secondary hover:bg-secondary/90 text-white"
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Seleccionar archivos
+                          </Button>
+                        </div>
+                        {formErrors.files && (
+                          <p className="text-sm text-red-500">{formErrors.files}</p>
+                        )}
+
+                        {/* File list */}
+                        {formData.files.length > 0 && (
+                          <div className="mt-2 space-y-2">
+                            {formData.files.map((file, index) => (
+                              <div
+                                key={index}
+                                className="flex items-center justify-between rounded-md border p-2"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm">{file.name}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    ({(file.size / 1024).toFixed(1)} KB)
+                                  </span>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeFile(index)}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Nota lateral */}
+                      <div className="md:w-56 text-xs text-muted-foreground bg-amber-50 border border-amber-200 rounded-md p-3 flex-shrink-0">
+                        Diseñado específicamente para adjuntar la Hoja de Producto del Excel de Innovación, evitando la creación manual de fichas dentro de la app
+                      </div>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-5 shadow-lg hover:shadow-xl transition-all duration-200"
+                    >
+                      {submitting ? "Creando solicitud..." : "Crear solicitud"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              {/* INNOVACIÓN CREATOR VIEW: Seguimiento global de solicitudes */}
+              <Card className="shadow-lg border-0 overflow-hidden">
+                <div className="bg-[#00829a] px-6 py-4">
+                  <CardTitle className="text-white text-xl">Seguimiento global de solicitudes</CardTitle>
+                  <CardDescription className="text-white/90">
+                    {allSolicitudes.length === 0
+                      ? "No hay solicitudes en el sistema."
+                      : `${filteredAllSolicitudes.length} de ${allSolicitudes.length} solicitudes.`}
+                  </CardDescription>
+                </div>
+                <CardContent className="pt-6">
+                  <div className="flex flex-col md:flex-row gap-4 mb-4">
+                    <Input
+                      className="md:w-1/3"
+                      placeholder="Buscar por nombre o ID..."
+                      value={globalSearchTerm}
+                      onChange={(e) => setGlobalSearchTerm(e.target.value)}
+                    />
+                    <select
+                      className="md:w-1/4 h-10 rounded-md border-2 border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-colors appearance-none cursor-pointer"
+                      value={globalStatusFilter}
+                      onChange={(e) => setGlobalStatusFilter(e.target.value)}
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2300829a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                        backgroundPosition: 'right 0.5rem center',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundSize: '1.5em 1.5em',
+                        paddingRight: '2.5rem'
+                      }}
+                    >
+                      <option value="ALL" style={{ backgroundColor: 'white' }}>Todos los estados</option>
+                      {estados.map((estado) => (
+                        <option key={estado.id} value={estado.id} style={{ backgroundColor: 'white' }}>
+                          {estado.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="md:w-1/4 h-10 rounded-md border-2 border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-colors appearance-none cursor-pointer"
+                      value={globalAreaFilter}
+                      onChange={(e) => setGlobalAreaFilter(e.target.value)}
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2300829a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                        backgroundPosition: 'right 0.5rem center',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundSize: '1.5em 1.5em',
+                        paddingRight: '2.5rem'
+                      }}
+                    >
+                      <option value="ALL" style={{ backgroundColor: 'white' }}>Todas las áreas</option>
+                      {areas.map((area) => (
+                        <option key={area.id} value={area.id} style={{ backgroundColor: 'white' }}>
+                          {area.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {filteredAllSolicitudes.length > 0 ? (
+                    <div className="overflow-auto rounded-md border" style={{ maxHeight: 420 }}>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="sticky top-0 bg-background z-10">ID</TableHead>
+                          <TableHead className="sticky top-0 bg-background z-10">Nombre del arte</TableHead>
+                          <TableHead className="sticky top-0 bg-background z-10">Estado</TableHead>
+                          <TableHead className="sticky top-0 bg-background z-10">Etapa actual</TableHead>
+                          <TableHead className="sticky top-0 bg-background z-10">Área</TableHead>
+                          <TableHead className="sticky top-0 bg-background z-10">Última actualización</TableHead>
+                          <TableHead className="sticky top-0 bg-background z-10 text-right">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredAllSolicitudes
+                          .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+                          .map((sol) => (
+                          <TableRow key={sol.id}>
+                            <TableCell className="font-mono text-sm">{sol.id}</TableCell>
+                            <TableCell className="font-medium">{sol.title}</TableCell>
+                            <TableCell>
+                              <Badge variant={getStatusVariant(sol.state.code)}>
+                                {sol.state.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{sol.stage.label}</TableCell>
+                            <TableCell>{sol.area.nombre}</TableCell>
+                            <TableCell>{formatDate(sol.updated_at)}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                className="bg-primary hover:bg-primary/90 text-white"
+                                size="sm"
+                                onClick={() => router.push(`/solicitudes/${sol.id}`)}
+                              >
+                                Ver detalle
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    </div>
+                  ) : (
+                    <div className="flex h-40 items-center justify-center text-muted-foreground">
+                      No se encontraron resultados
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+            ) : (
+            <>
+            {/* STANDARD CREATOR VIEW: New Solicitud Form */}
             <Card className="shadow-lg border-0 overflow-hidden">
               <div className="bg-gradient-to-r from-[#00829a] to-[#00a3b4] px-6 py-4">
                 <CardTitle className="text-white text-xl font-bold">Nueva solicitud</CardTitle>
@@ -797,6 +1088,8 @@ export default function Dashboard() {
                 )}
               </CardContent>
             </Card>
+            </>
+            )} {/* fin isInnovacionCreator */}
           </>
         ) : isApprover ? (
           <>

@@ -213,6 +213,21 @@ class SolicitudDetailResponse(SolicitudResponse):
     )
 
 
+class SolicitudCommentRequest(BaseModel):
+    """Schema para agregar un comentario a una solicitud sin cambiar su estado"""
+    comment: str = Field(..., min_length=1, max_length=1000, description="Texto del comentario")
+    categoria: str = Field("feedback", description="'feedback' guarda COMMENTED, 'ajuste' guarda REQUEST_CHANGES sin cambiar estado")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "comment": "Se realizó ajuste de sabor en la formulación.",
+                "categoria": "ajuste"
+            }
+        }
+    )
+
+
 class SolicitudListResponse(BaseModel):
     """Schema para respuesta de lista de solicitudes"""
     total: int = Field(..., description="Total de registros")

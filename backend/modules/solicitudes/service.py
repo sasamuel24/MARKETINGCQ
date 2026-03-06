@@ -614,6 +614,47 @@ class SolicitudService:
         solicitud_actualizada = self.repository.get_by_id(solicitud_id, include_relations=True)
         return SolicitudDetailResponse.model_validate(solicitud_actualizada)
     
+    def comentar_solicitud(self, solicitud_id: int, comment: str, actor_user_id: int, categoria: str = "feedback") -> dict:
+        """
+        Agregar un comentario libre a una solicitud sin cambiar su estado ni etapa.
+
+        Args:
+            solicitud_id: ID de la solicitud
+            comment: Texto del comentario
+            actor_user_id: ID del usuario que comenta
+
+        Returns:
+            Diccionario con confirmación
+        """
+        from db.models import SolicitudEvento, EventAction
+        from datetime import datetime
+
+        solicitud = self.repository.get_by_id(solicitud_id, include_relations=True)
+        if not solicitud:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Solicitud con ID {solicitud_id} no encontrada"
+            )
+
+        # "ajuste" usa REQUEST_CHANGES para aparecer en la sección correcta,
+        # pero NO cambia el estado de la solicitud (solo registra el evento).
+        action = EventAction.REQUEST_CHANGES if categoria != "feedback" else EventAction.COMMENTED
+
+        evento = SolicitudEvento(
+            solicitud_id=solicitud_id,
+            stage_id=solicitud.stage_id,
+            status_id=solicitud.status_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            comment=comment,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        self.repository.db.add(evento)
+        self.repository.db.commit()
+
+        return {"message": "Comentario registrado", "solicitud_id": solicitud_id}
+
     def rechazar_solicitud(
         self, 
         solicitud_id: int, 

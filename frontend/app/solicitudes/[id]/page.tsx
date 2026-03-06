@@ -4,7 +4,7 @@ import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, FileText, Calendar, User, Building2, Workflow, Eye } from "lucide-react";
+import { ArrowLeft, Download, FileText, Calendar, User, Building2, Workflow, Eye, Upload, X } from "lucide-react";
 import { ToastContainer, ToastData } from "@/components/ui/toast-simple";
 import {
   Dialog,
@@ -108,6 +108,23 @@ export default function SolicitudDetailPage() {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
+  const [comentarioFilter, setComentarioFilter] = useState<"feedback" | "ajustes">("feedback");
+  const [productImageUrl, setProductImageUrl] = useState<string | null>(null);
+
+  // Upload de documentos (área 4)
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadDocType, setUploadDocType] = useState<"ARTE" | "EVIDENCIA" | "CONSOLIDADO">("EVIDENCIA");
+  const [uploading, setUploading] = useState(false);
+
+  // Comentario libre (área 4)
+  const [newComment, setNewComment] = useState("");
+  const [submittingComment, setSubmittingComment] = useState(false);
+
+  // Eliminar archivo (área 4)
+  const [confirmDeleteFileId, setConfirmDeleteFileId] = useState<number | null>(null);
+  const [deletingFileId, setDeletingFileId] = useState<number | null>(null);
+
   useEffect(() => {
     const token = localStorage.getItem("access_token");
     if (!token) {
@@ -151,7 +168,24 @@ export default function SolicitudDetailPage() {
 
       const data = await res.json();
       setSolicitud(data);
-      
+
+      // Para área 4, cargar imagen del producto como blob (requiere auth)
+      if (data.area?.id === 4) {
+        const imgFile = data.files?.find((f: { content_type: string; id: number }) =>
+          f.content_type.startsWith("image/")
+        );
+        if (imgFile) {
+          fetch(`${API_URL}/api/v1/solicitudes/${solicitudId}/files/${imgFile.id}/preview`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+            .then((r) => (r.ok ? r.blob() : null))
+            .then((blob) => {
+              if (blob) setProductImageUrl(URL.createObjectURL(blob));
+            })
+            .catch(() => {});
+        }
+      }
+
       // Cargar eventos/comentarios
       fetchEventos(token);
     } catch (err) {
@@ -451,11 +485,703 @@ export default function SolicitudDetailPage() {
                       solicitud.state.label === "Rechazado";
   
   // Verificar si el usuario actual ya aprobó en la etapa actual
-  const userAlreadyApproved = eventos.some(evento => 
-    evento.action === "APPROVED" && 
-    evento.stage.id === solicitud.stage.id && 
+  const userAlreadyApproved = eventos.some(evento =>
+    evento.action === "APPROVED" &&
+    evento.stage.id === solicitud.stage.id &&
     evento.actor.id.toString() === user?.id
   );
+
+  const handleUploadNewFiles = async () => {
+    if (uploadFiles.length === 0) {
+      showToast("Selecciona al menos un archivo", "error");
+      return;
+    }
+    setUploading(true);
+    const token = localStorage.getItem("access_token");
+    try {
+      const { uploadFilesWithPresignedUrl } = await import("@/lib/uploadFiles");
+      await uploadFilesWithPresignedUrl(API_URL, token!, solicitud.id, uploadFiles, uploadDocType);
+      setUploadFiles([]);
+      setShowUploadPanel(false);
+      await fetchSolicitud(token!);
+      showToast(`${uploadFiles.length} archivo(s) subido(s) correctamente`);
+    } catch {
+      showToast("Error al subir los archivos", "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteFile = async (fileId: number) => {
+    setDeletingFileId(fileId);
+    const token = localStorage.getItem("access_token");
+    try {
+      const res = await fetch(`${API_URL}/api/v1/solicitud-files/${fileId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Error al eliminar");
+      setConfirmDeleteFileId(null);
+      await fetchSolicitud(token!);
+      showToast("Archivo eliminado correctamente");
+    } catch {
+      showToast("Error al eliminar el archivo", "error");
+    } finally {
+      setDeletingFileId(null);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return;
+    setSubmittingComment(true);
+    const token = localStorage.getItem("access_token");
+    try {
+      const res = await fetch(`${API_URL}/api/v1/solicitudes/${solicitudId}/comentar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ comment: newComment, categoria: comentarioFilter }),
+      });
+      if (!res.ok) throw new Error("Error al guardar el comentario");
+      setNewComment("");
+      await fetchEventos(token!);
+      showToast("Comentario registrado");
+    } catch {
+      showToast("Error al agregar el comentario", "error");
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // PRODUCCION_BEBIDAS_PASTELERIA (area_id = 4) – Vista Figma
+  // ─────────────────────────────────────────────────────────────
+  if (solicitud.area.id === 4) {
+    const feedbackEventos = eventos.filter((e) => e.action === "APPROVED" || e.action === "COMMENTED");
+    const ajustesEventos  = eventos.filter((e) => e.action === "REQUEST_CHANGES" || e.action === "REJECTED");
+    const filteredEventos  = comentarioFilter === "feedback" ? feedbackEventos : ajustesEventos;
+    const canCerrar = isApprover && !isAjustesSolicitados && !isAprobadoFinal && !isRechazado && !userAlreadyApproved;
+
+    const getDocTypeLabel = (docType: string) => {
+      if (docType === "ARTE")        return "Hoja de Producto";
+      if (docType === "EVIDENCIA")   return "Evidencia Fotográfica";
+      if (docType === "CONSOLIDADO") return "Documento consolidado versión final";
+      return docType;
+    };
+
+    const getDocTypeDesc = (docType: string) => {
+      if (docType === "ARTE")        return "Archivo principal del producto";
+      if (docType === "EVIDENCIA")   return "→ Fotos de los prototipos físicos realizados";
+      if (docType === "CONSOLIDADO") return "Versión final (cuando aplique)";
+      return "";
+    };
+
+    return (
+      <div className="min-h-screen" style={{ background: "#daeef0" }}>
+        <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-4">
+
+          {/* Volver */}
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 w-fit"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Volver
+          </button>
+
+          {/* Tarjeta principal del producto */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-bold">{solicitud.title}</h1>
+                  <span
+                    className="text-xs rounded-full px-3 py-1 font-medium border"
+                    style={{ background: "#e8f5f4", color: "#339b92", borderColor: "#c0e0de" }}
+                  >
+                    {solicitud.state.label}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 mt-1">Solicitud #{solicitud.id}</p>
+              </div>
+              {productImageUrl && (
+                <img
+                  src={productImageUrl}
+                  alt={solicitud.title}
+                  className="w-24 h-24 rounded-xl object-cover flex-shrink-0 shadow-sm"
+                />
+              )}
+            </div>
+
+            {solicitud.description && (
+              <div className="mt-4">
+                <h3 className="font-semibold text-sm mb-1">Descripción</h3>
+                <p className="text-sm text-gray-600 whitespace-pre-wrap">{solicitud.description}</p>
+              </div>
+            )}
+
+            {/* Grid de metadatos */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+              <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: "#e8f5f4" }}>
+                <Building2 className="h-5 w-5 mt-0.5 flex-shrink-0" style={{ color: "#339b92" }} />
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide">Área</p>
+                  <p className="text-sm font-medium mt-0.5">{solicitud.area.nombre}</p>
+                </div>
+              </div>
+              <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: "#e8f5f4" }}>
+                <Workflow className="h-5 w-5 mt-0.5 flex-shrink-0" style={{ color: "#339b92" }} />
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide">Etapa actual</p>
+                  <p className="text-sm font-medium mt-0.5">{solicitud.stage.label}</p>
+                </div>
+              </div>
+              <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: "#e8f5f4" }}>
+                <User className="h-5 w-5 mt-0.5 flex-shrink-0" style={{ color: "#339b92" }} />
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide">Creado por</p>
+                  <p className="text-sm font-medium mt-0.5">{solicitud.created_by.full_name}</p>
+                  <p className="text-xs text-gray-500">{solicitud.created_by.email}</p>
+                </div>
+              </div>
+              <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: "#e8f5f4" }}>
+                <Calendar className="h-5 w-5 mt-0.5 flex-shrink-0" style={{ color: "#339b92" }} />
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide">Fechas</p>
+                  <p className="text-xs text-gray-600 mt-0.5">Creado: {formatDate(solicitud.created_at)}</p>
+                  <p className="text-xs text-gray-600">Última actualización: {formatDate(solicitud.updated_at)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Archivos – tarjetas en grid */}
+          {solicitud.files.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {solicitud.files.map((file) => (
+                <div key={file.id} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <FileText className="h-6 w-6 flex-shrink-0 mt-0.5" style={{ color: "#339b92" }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold leading-snug">{getDocTypeLabel(file.doc_type)}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{getDocTypeDesc(file.doc_type)}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 truncate pl-8">{file.filename}</p>
+
+                  {/* Confirmación inline de eliminación */}
+                  {confirmDeleteFileId === file.id ? (
+                    <div className="flex items-center justify-between pt-2 border-t border-red-100 mt-auto bg-red-50 rounded-lg px-2 py-1.5">
+                      <p className="text-xs text-red-600 font-medium">¿Eliminar archivo?</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setConfirmDeleteFileId(null)}
+                          className="text-xs px-2 py-1 rounded-lg border text-gray-500"
+                          disabled={deletingFileId === file.id}
+                        >
+                          No
+                        </button>
+                        <button
+                          onClick={() => handleDeleteFile(file.id)}
+                          className="text-xs px-2 py-1 rounded-lg text-white font-semibold"
+                          style={{ background: "#dc2626" }}
+                          disabled={deletingFileId === file.id}
+                        >
+                          {deletingFileId === file.id ? "..." : "Sí, eliminar"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between pt-2 border-t border-gray-100 mt-auto">
+                      <button
+                        onClick={() => setConfirmDeleteFileId(file.id)}
+                        className="text-gray-300 hover:text-red-400 transition-colors"
+                        title="Eliminar"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                      <div className="flex gap-4">
+                        {(file.content_type.startsWith("image/") || file.content_type === "application/pdf") && (
+                          <button
+                            onClick={() => handlePreviewFile(file.id, file.filename, file.content_type)}
+                            disabled={loadingPreview}
+                            className="text-gray-400 hover:text-[#339b92] transition-colors"
+                            title="Ver"
+                          >
+                            <Eye className="h-5 w-5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDownloadFile(file.id, file.filename)}
+                          className="text-gray-400 hover:text-[#339b92] transition-colors"
+                          title="Descargar"
+                        >
+                          <Download className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Panel: Agregar documentos ── */}
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between px-5 py-4 text-left"
+              onClick={() => setShowUploadPanel((v) => !v)}
+            >
+              <div className="flex items-center gap-2">
+                <Upload className="h-5 w-5" style={{ color: "#339b92" }} />
+                <span className="font-semibold text-sm">Agregar documentos a la ficha</span>
+              </div>
+              <span className="text-gray-400 text-lg leading-none">{showUploadPanel ? "−" : "+"}</span>
+            </button>
+
+            {showUploadPanel && (
+              <div className="px-5 pb-5 flex flex-col gap-3 border-t border-gray-100">
+                {/* Selector de tipo */}
+                <div className="flex gap-2 flex-wrap pt-3">
+                  {(["ARTE", "EVIDENCIA", "CONSOLIDADO"] as const).map((tipo) => (
+                    <button
+                      key={tipo}
+                      onClick={() => setUploadDocType(tipo)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
+                      style={{
+                        background: uploadDocType === tipo ? "#339b92" : "white",
+                        color: uploadDocType === tipo ? "white" : "#339b92",
+                        borderColor: "#339b92",
+                      }}
+                    >
+                      {tipo === "ARTE" ? "Hoja de Producto" : tipo === "EVIDENCIA" ? "Evidencia Fotográfica" : "Doc. Consolidado"}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Zona de drop */}
+                <label
+                  htmlFor="area4-file-upload"
+                  className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors"
+                  style={{ borderColor: "#339b92" }}
+                >
+                  <Upload className="h-8 w-8 mb-1" style={{ color: "#339b92" }} />
+                  <p className="text-sm text-gray-500">
+                    <span className="font-semibold" style={{ color: "#339b92" }}>Seleccionar archivos</span>
+                    {" "}o arrastra aquí
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">PDF, imagen, Excel — máx. 50 MB</p>
+                  <input
+                    id="area4-file-upload"
+                    type="file"
+                    className="hidden"
+                    multiple
+                    accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls"
+                    onChange={(e) => {
+                      if (e.target.files)
+                        setUploadFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+                    }}
+                    disabled={uploading}
+                  />
+                </label>
+
+                {/* Lista de archivos seleccionados */}
+                {uploadFiles.length > 0 && (
+                  <div className="space-y-2">
+                    {uploadFiles.map((file, i) => (
+                      <div key={i} className="flex items-center justify-between border rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                          <span className="text-sm truncate">{file.name}</span>
+                          <span className="text-xs text-gray-400 flex-shrink-0">
+                            ({(file.size / 1024).toFixed(0)} KB)
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setUploadFiles((prev) => prev.filter((_, j) => j !== i))}
+                          className="text-gray-400 hover:text-red-500 ml-2 flex-shrink-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Botones */}
+                <div className="flex gap-2 justify-end pt-1">
+                  <button
+                    onClick={() => { setShowUploadPanel(false); setUploadFiles([]); }}
+                    className="px-4 py-2 text-sm rounded-xl border text-gray-500"
+                    disabled={uploading}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleUploadNewFiles}
+                    disabled={uploadFiles.length === 0 || uploading}
+                    className="px-4 py-2 text-sm font-semibold rounded-xl text-white transition-colors disabled:opacity-50"
+                    style={{ background: "#339b92" }}
+                  >
+                    {uploading ? "Subiendo..." : `Subir ${uploadFiles.length > 0 ? `(${uploadFiles.length})` : ""}`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Historial de comentarios */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <h3 className="font-semibold text-base">Historial de comentarios</h3>
+            <p className="text-xs text-gray-500 mb-4">Registro de ajustes solicitados y comentarios</p>
+
+            {/* Filtros */}
+            <div className="flex justify-end gap-2 mb-4 flex-wrap">
+              <button
+                className="px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
+                style={{
+                  background: comentarioFilter === "feedback" ? "#339b92" : "#d9d9d9",
+                  color: comentarioFilter === "feedback" ? "white" : "#333",
+                }}
+                onClick={() => setComentarioFilter("feedback")}
+              >
+                Registro de Feedback
+              </button>
+              <button
+                className="px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
+                style={{
+                  background: comentarioFilter === "ajustes" ? "#339b92" : "#d9d9d9",
+                  color: comentarioFilter === "ajustes" ? "white" : "#333",
+                }}
+                onClick={() => setComentarioFilter("ajustes")}
+              >
+                Ajustes Realizados
+              </button>
+            </div>
+
+            {filteredEventos.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">No hay registros en esta categoría</p>
+            ) : (
+              <div className="space-y-3">
+                {filteredEventos
+                  .slice()
+                  .reverse()
+                  .map((evento) => (
+                    <div key={evento.id} className="border rounded-xl p-4">
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                        <div className="flex items-start gap-2">
+                          <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                            <User className="h-4 w-4 text-gray-400" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold">{evento.actor.full_name}</p>
+                            <p className="text-xs text-gray-500">{evento.actor.email}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span
+                            className="text-xs px-3 py-1 rounded-full font-semibold"
+                            style={{
+                              background:
+                                evento.action === "APPROVED"
+                                  ? "#1a5c38"
+                                  : evento.action === "REJECTED"
+                                  ? "#fee2e2"
+                                  : evento.action === "COMMENTED"
+                                  ? "#e8f5f4"
+                                  : "#fef3c7",
+                              color:
+                                evento.action === "APPROVED"
+                                  ? "white"
+                                  : evento.action === "REJECTED"
+                                  ? "#dc2626"
+                                  : evento.action === "COMMENTED"
+                                  ? "#339b92"
+                                  : "#92400e",
+                            }}
+                          >
+                            {evento.action === "REQUEST_CHANGES"
+                              ? "Ajustes solicitados"
+                              : evento.action === "APPROVED"
+                              ? `Aprobado en ${evento.stage.label}`
+                              : evento.action === "REJECTED"
+                              ? "Rechazado"
+                              : evento.action === "COMMENTED"
+                              ? "Comentario"
+                              : evento.action}
+                          </span>
+                          <p className="text-xs text-gray-400 mt-1 whitespace-nowrap">
+                            {formatDate(evento.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                      {evento.comment && (
+                        <div className="mt-3 bg-gray-50 rounded-lg p-3">
+                          <p className="text-sm whitespace-pre-wrap">{evento.comment}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            {/* Campo para agregar comentario */}
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-sm font-semibold mb-2">Agregar comentario</p>
+              <textarea
+                rows={3}
+                placeholder={
+                  comentarioFilter === "feedback"
+                    ? "Escribe un comentario de feedback o nota de seguimiento..."
+                    : "Describe el ajuste realizado al producto..."
+                }
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                disabled={submittingComment}
+                className="w-full rounded-xl border px-3 py-2 text-sm resize-none outline-none focus:border-[#339b92] transition-colors"
+                style={{ borderColor: "#d1d5db" }}
+              />
+              <div className="flex justify-end mt-2">
+                <button
+                  onClick={handleAddComment}
+                  disabled={!newComment.trim() || submittingComment}
+                  className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                  style={{ background: "#339b92" }}
+                >
+                  {submittingComment ? "Enviando..." : "Enviar comentario"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Subir nueva versión (CREATOR con ajustes pendientes) */}
+          {isCreator && isAjustesSolicitados && (
+            <button
+              onClick={() => router.push(`/solicitudes/${solicitud.id}/upload`)}
+              className="w-full py-4 font-semibold text-base text-white rounded-2xl transition-colors"
+              style={{ background: "#339b92" }}
+            >
+              Subir nueva versión
+            </button>
+          )}
+
+          {/* Cerrar Diagnóstico Técnico */}
+          {canCerrar && (
+            <button
+              onClick={() => setShowAprobarDialog(true)}
+              className="w-full py-4 font-semibold text-base text-white rounded-2xl transition-colors"
+              style={{ background: "#339b92" }}
+            >
+              Cerrar Diagnóstico Técnico
+            </button>
+          )}
+
+          {/* Solicitar ajustes / Rechazar (aprobadores) */}
+          {isApprover && !isAjustesSolicitados && !isAprobadoFinal && !isRechazado && !userAlreadyApproved && (
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowAjustesDialog(true)}
+                className="flex-1 py-3 font-semibold text-sm rounded-2xl border-2 transition-colors"
+                style={{ borderColor: "#339b92", color: "#339b92" }}
+              >
+                Solicitar ajustes
+              </button>
+              <button
+                onClick={() => setShowRechazarDialog(true)}
+                className="flex-1 py-3 font-semibold text-sm rounded-2xl border-2 border-red-400 text-red-500 transition-colors"
+              >
+                Rechazar
+              </button>
+            </div>
+          )}
+
+          {/* Estado ya aprobado por este usuario */}
+          {isApprover && !isAjustesSolicitados && !isAprobadoFinal && !isRechazado && userAlreadyApproved && (
+            <div className="bg-white rounded-2xl p-4 text-sm text-gray-500 text-center shadow-sm">
+              Tu aprobación ha sido registrada para esta etapa. La solicitud avanzará cuando todos los aprobadores hayan dado su visto bueno.
+            </div>
+          )}
+
+          {isAprobadoFinal && (
+            <div
+              className="rounded-2xl p-4 text-sm font-semibold text-center"
+              style={{ background: "#1a5c38", color: "white" }}
+            >
+              Diagnóstico técnico cerrado — solicitud aprobada en todas las etapas
+            </div>
+          )}
+
+          {isRechazado && (
+            <div className="rounded-2xl p-4 text-sm font-semibold text-center bg-red-50 text-red-600 border border-red-200">
+              Solicitud rechazada. Revisa el historial de comentarios.
+            </div>
+          )}
+        </div>
+
+        {/* ── Dialogs (reutilizados del flujo general) ── */}
+        <Dialog open={showAprobarDialog} onOpenChange={setShowAprobarDialog}>
+          <DialogContent className="sm:max-w-[525px]">
+            <DialogHeader>
+              <DialogTitle>Cerrar Diagnóstico Técnico</DialogTitle>
+              <DialogDescription>
+                La solicitud avanzará a la siguiente etapa o se marcará como aprobada final.
+                Opcionalmente puedes agregar un comentario.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="aprobar-comment-area4">Comentario (opcional)</Label>
+                <Textarea
+                  id="aprobar-comment-area4"
+                  placeholder="Ej: Diagnóstico técnico verificado, aprobado para continuar..."
+                  value={aprobarComment}
+                  onChange={(e) => setAprobarComment(e.target.value)}
+                  rows={4}
+                  className="resize-none"
+                  disabled={submittingAprobar}
+                />
+                <p className="text-xs text-muted-foreground">{aprobarComment.length}/1000 caracteres</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setShowAprobarDialog(false); setAprobarComment(""); }} disabled={submittingAprobar}>
+                Cancelar
+              </Button>
+              <Button onClick={handleAprobar} disabled={submittingAprobar} style={{ background: "#339b92" }}>
+                {submittingAprobar ? "Procesando..." : "Confirmar cierre"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showAjustesDialog} onOpenChange={setShowAjustesDialog}>
+          <DialogContent className="sm:max-w-[525px]">
+            <DialogHeader>
+              <DialogTitle>Solicitar ajustes</DialogTitle>
+              <DialogDescription>Explica los cambios necesarios para esta innovación.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="ajustes-comment-area4">Comentarios sobre los ajustes necesarios *</Label>
+                <Textarea
+                  id="ajustes-comment-area4"
+                  placeholder="Ej: Ajustar la formulación del producto según observaciones..."
+                  value={ajustesComment}
+                  onChange={(e) => setAjustesComment(e.target.value)}
+                  rows={5}
+                  className="resize-none"
+                  disabled={submittingAjustes}
+                />
+                <p className="text-xs text-muted-foreground">{ajustesComment.length}/1000 caracteres</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setShowAjustesDialog(false); setAjustesComment(""); }} disabled={submittingAjustes}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSolicitarAjustes} disabled={submittingAjustes || !ajustesComment.trim()}>
+                {submittingAjustes ? "Enviando..." : "Solicitar ajustes"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showRechazarDialog} onOpenChange={setShowRechazarDialog}>
+          <DialogContent className="sm:max-w-[525px]">
+            <DialogHeader>
+              <DialogTitle>Rechazar solicitud</DialogTitle>
+              <DialogDescription>Explica el motivo por el cual esta innovación no cumple los requisitos.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="rechazar-comment-area4">Motivo del rechazo *</Label>
+                <Textarea
+                  id="rechazar-comment-area4"
+                  placeholder="Ej: No cumple con los estándares de producción establecidos..."
+                  value={rechazarComment}
+                  onChange={(e) => setRechazarComment(e.target.value)}
+                  rows={5}
+                  className="resize-none"
+                  disabled={submittingRechazar}
+                />
+                <p className="text-xs text-muted-foreground">{rechazarComment.length}/1000 caracteres</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setShowRechazarDialog(false); setRechazarComment(""); }} disabled={submittingRechazar}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" onClick={handleRechazar} disabled={submittingRechazar || !rechazarComment.trim()}>
+                {submittingRechazar ? "Rechazando..." : "Rechazar solicitud"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showPreviewDialog} onOpenChange={(open) => {
+          setShowPreviewDialog(open);
+          if (!open) {
+            if (previewFile) window.URL.revokeObjectURL(previewFile.url);
+            setPreviewFile(null);
+            setImageError(false);
+          }
+        }}>
+          <DialogContent className="sm:max-w-[90vw] max-h-[90vh] overflow-auto">
+            <DialogHeader>
+              <DialogTitle>{previewFile?.filename}</DialogTitle>
+              <DialogDescription>Vista previa del archivo</DialogDescription>
+            </DialogHeader>
+            <div className="flex items-center justify-center p-4 min-h-[400px]">
+              {loadingPreview ? (
+                <div className="flex flex-col items-center gap-4">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#339b92]"></div>
+                  <p className="text-sm text-muted-foreground">Cargando vista previa...</p>
+                </div>
+              ) : previewFile ? (
+                <>
+                  {previewFile.type.startsWith("image/") ? (
+                    imageError ? (
+                      <div className="text-center text-muted-foreground">
+                        <FileText className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                        <p>Error al cargar la imagen</p>
+                      </div>
+                    ) : (
+                      <img
+                        src={previewFile.url}
+                        alt={previewFile.filename}
+                        className="max-w-full max-h-[70vh] object-contain rounded-lg"
+                        loading="eager"
+                        onError={() => setImageError(true)}
+                      />
+                    )
+                  ) : previewFile.type === "application/pdf" ? (
+                    <iframe src={previewFile.url} className="w-full h-[70vh] rounded-lg border" title={previewFile.filename} />
+                  ) : (
+                    <div className="text-center text-muted-foreground">
+                      <FileText className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                      <p>No se puede mostrar vista previa de este tipo de archivo</p>
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setShowPreviewDialog(false);
+                if (previewFile) window.URL.revokeObjectURL(previewFile.url);
+                setPreviewFile(null);
+                setImageError(false);
+              }}>
+                Cerrar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <ToastContainer toasts={toasts} onRemove={removeToast} />
+      </div>
+    );
+  }
+  // ─────────────────────────────────────────────────────────────
 
   return (
     <div className="flex w-full flex-col bg-muted/40 p-4 md:p-10">

@@ -159,5 +159,6 @@ class AuthService:
             "full_name": user.full_name,
             "role": user.rol.nombre if user.rol else "user",
             "rol_id": user.rol_id,
-            "area_id": user.area_id
+            "area_id": user.area_id,
+            "is_active": user.is_active if hasattr(user, "is_active") else True,
         }
