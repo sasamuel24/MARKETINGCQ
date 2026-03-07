@@ -301,8 +301,8 @@ class Solicitud(Base):
     stage = relationship("Etapa", foreign_keys=[stage_id], back_populates="solicitudes")
     state = relationship("Estado", foreign_keys=[status_id], back_populates="solicitudes")
     created_by = relationship("User", foreign_keys=[created_by_user_id], back_populates="solicitudes_created")
-    files = relationship("SolicitudFile", back_populates="solicitud")
-    eventos = relationship("SolicitudEvento", back_populates="solicitud")
+    files = relationship("SolicitudFile", back_populates="solicitud", cascade="all, delete-orphan")
+    eventos = relationship("SolicitudEvento", back_populates="solicitud", cascade="all, delete-orphan")
     
     __table_args__ = (
         Index('ix_solicitudes_created_at', 'created_at'),

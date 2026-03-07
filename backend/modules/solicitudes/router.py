@@ -510,6 +510,28 @@ async def comentar_solicitud(
     )
 
 
+@router.post("/{solicitud_id}/cerrar-diagnostico", response_model=SolicitudDetailResponse, status_code=status.HTTP_200_OK)
+async def cerrar_diagnostico(
+    solicitud_id: int,
+    aprobar_request: SolicitudAprobarRequest,
+    service: SolicitudService = Depends(get_solicitud_service),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    El creador del área 4 cierra el diagnóstico técnico y envía la ficha al aprobador.
+
+    - Avanza la solicitud a la siguiente etapa del área.
+    - Notifica por email a los aprobadores de esa etapa (Paula, user_id=12).
+    - Registra un evento SUBMITTED.
+    Requiere autenticación.
+    """
+    return service.cerrar_diagnostico(
+        solicitud_id=solicitud_id,
+        comment=aprobar_request.comment,
+        actor_user_id=int(current_user_id),
+    )
+
+
 @router.get("/{solicitud_id}/eventos", status_code=status.HTTP_200_OK)
 async def get_solicitud_eventos(
     solicitud_id: int,

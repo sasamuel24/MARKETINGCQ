@@ -614,6 +614,94 @@ class SolicitudService:
         solicitud_actualizada = self.repository.get_by_id(solicitud_id, include_relations=True)
         return SolicitudDetailResponse.model_validate(solicitud_actualizada)
     
+    def cerrar_diagnostico(self, solicitud_id: int, comment: Optional[str], actor_user_id: int) -> SolicitudDetailResponse:
+        """
+        El creador del área 4 cierra el diagnóstico técnico y envía la ficha al aprobador
+        de la siguiente etapa (Paula, user_id=12).
+
+        - Avanza a la siguiente etapa del área (por orden).
+        - Si ya está en la última etapa, notifica a los aprobadores de la etapa actual.
+        - Registra un evento SUBMITTED.
+        - Envía email a los aprobadores de la nueva etapa.
+        """
+        from db.models import SolicitudEvento, EventAction, EtapaAprobador, Etapa
+
+        solicitud = self.repository.get_by_id(solicitud_id, include_relations=True)
+        if not solicitud:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Solicitud con ID {solicitud_id} no encontrada",
+            )
+
+        # Buscar la siguiente etapa en orden dentro del área
+        etapa_actual = self.etapa_repository.get_by_id(solicitud.stage_id)
+
+        # Si ya hubo un REQUEST_CHANGES en la etapa actual, el creador está re-enviando
+        # tras ajustes: NO avanzar, volver a la misma etapa para que el mismo aprobador revise
+        hubo_ajuste_en_etapa_actual = self.repository.db.query(SolicitudEvento).filter(
+            SolicitudEvento.solicitud_id == solicitud_id,
+            SolicitudEvento.stage_id == solicitud.stage_id,
+            SolicitudEvento.action == EventAction.REQUEST_CHANGES,
+        ).first()
+
+        if hubo_ajuste_en_etapa_actual:
+            # Re-envío tras ajustes: quedarse en la etapa actual
+            etapa_notificacion = etapa_actual
+            solicitud_update = SolicitudUpdate(status_id=1)  # EN_REVISION, misma etapa
+            self.repository.update(solicitud_id, solicitud_update)
+        else:
+            siguiente_etapa = self.repository.db.query(Etapa).filter(
+                Etapa.area_id == solicitud.area_id,
+                Etapa.order == etapa_actual.order + 1,
+            ).first()
+
+            if siguiente_etapa:
+                # Primera vez: avanzar a la siguiente etapa
+                etapa_notificacion = siguiente_etapa
+                solicitud_update = SolicitudUpdate(stage_id=siguiente_etapa.id, status_id=1)
+                self.repository.update(solicitud_id, solicitud_update)
+            else:
+                # Ya está en la última etapa — notificar a los aprobadores de la etapa actual
+                etapa_notificacion = etapa_actual
+
+        # Registrar evento SUBMITTED
+        evento = SolicitudEvento(
+            solicitud_id=solicitud_id,
+            action=EventAction.SUBMITTED,
+            comment=comment,
+            actor_user_id=actor_user_id,
+            status_id=1,  # EN_REVISION
+            stage_id=etapa_notificacion.id,
+        )
+        self.repository.db.add(evento)
+        self.repository.db.commit()
+
+        # Notificar a los aprobadores de la etapa de destino
+        aprobadores_etapa = self.repository.db.query(EtapaAprobador).filter(
+            EtapaAprobador.etapa_id == etapa_notificacion.id
+        ).all()
+
+        emails_aprobadores = []
+        for aprobador_rel in aprobadores_etapa:
+            if aprobador_rel.user_id in settings.WEEKLY_SUMMARY_USER_IDS:
+                continue
+            user = self.user_repository.get_by_id(aprobador_rel.user_id)
+            if user and user.email:
+                emails_aprobadores.append(user.email)
+
+        creador = self.user_repository.get_by_id(actor_user_id)
+        if emails_aprobadores:
+            email_service.send_approval_notification(
+                to_emails=emails_aprobadores,
+                solicitud_id=solicitud.id,
+                solicitud_title=solicitud.title,
+                stage_name=etapa_notificacion.label,
+                creator_name=creador.full_name if creador else "Creador",
+            )
+
+        solicitud_actualizada = self.repository.get_by_id(solicitud_id, include_relations=True)
+        return SolicitudDetailResponse.model_validate(solicitud_actualizada)
+
     def comentar_solicitud(self, solicitud_id: int, comment: str, actor_user_id: int, categoria: str = "feedback") -> dict:
         """
         Agregar un comentario libre a una solicitud sin cambiar su estado ni etapa.

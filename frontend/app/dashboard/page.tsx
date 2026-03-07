@@ -181,8 +181,8 @@ export default function Dashboard() {
     if (!silent) setLoading(true);
     let url = `${API_URL}/api/v1/solicitudes?page=1&page_size=100`;
     if (currentUser.role === "APPROVER" || currentUser.rol_id === 3) {
-      // Filtrar solo solicitudes pendientes de aprobación (no incluir APROBADO_FINAL ni RECHAZADO)
-      url += "&check_approver=true&status_id=1";
+      // check_approver filtra por etapa del aprobador; excluimos terminales en el frontend
+      url += "&check_approver=true";
       // También cargar todas las solicitudes para seguimiento global
       fetchAllSolicitudes(token);
     } else {
@@ -226,7 +226,9 @@ export default function Dashboard() {
     }
   };
 
+  const TERMINAL_STATES = ["APROBADO_FINAL", "RECHAZADO"];
   const filteredSolicitudes = solicitudes.filter((sol) => {
+    if (TERMINAL_STATES.includes(sol.state.code)) return false;
     const matchesSearch = sol.title.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "ALL" || sol.state.id === parseInt(statusFilter);
     const matchesArea = areaFilter === "ALL" || sol.area.id === parseInt(areaFilter);
@@ -537,31 +539,24 @@ export default function Dashboard() {
 
                       {/* Categoría */}
                       <div className="space-y-2">
-                        <Label className="font-medium">Categoría</Label>
-                        <div className="flex flex-col gap-2 pt-1">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="categoria"
-                              value="reposteria"
-                              checked={formData.categoria === "reposteria"}
-                              onChange={() => setFormData(prev => ({ ...prev, categoria: "reposteria" }))}
-                              className="accent-[#00829a] w-4 h-4"
-                            />
-                            <span className="font-medium text-sm">Repostería</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="categoria"
-                              value="bebidas"
-                              checked={formData.categoria === "bebidas"}
-                              onChange={() => setFormData(prev => ({ ...prev, categoria: "bebidas" }))}
-                              className="accent-[#00829a] w-4 h-4"
-                            />
-                            <span className="font-medium text-sm">Bebidas</span>
-                          </label>
-                        </div>
+                        <Label htmlFor="categoria" className="font-medium">Categoría</Label>
+                        <select
+                          id="categoria"
+                          value={formData.categoria}
+                          onChange={(e) => setFormData(prev => ({ ...prev, categoria: e.target.value as "" | "reposteria" | "bebidas" }))}
+                          className={`h-10 w-full rounded-md border-2 ${formErrors.categoria ? "border-red-500" : "border-input"} bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-colors appearance-none cursor-pointer`}
+                          style={{
+                            backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2300829a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                            backgroundPosition: 'right 0.5rem center',
+                            backgroundRepeat: 'no-repeat',
+                            backgroundSize: '1.5em 1.5em',
+                            paddingRight: '2.5rem'
+                          }}
+                        >
+                          <option value="" style={{ backgroundColor: 'white' }}>Seleccionar categoría</option>
+                          <option value="reposteria" style={{ backgroundColor: 'white' }}>Repostería</option>
+                          <option value="bebidas" style={{ backgroundColor: 'white' }}>Bebidas</option>
+                        </select>
                         {formErrors.categoria && (
                           <p className="text-sm text-red-500">{formErrors.categoria}</p>
                         )}
@@ -588,8 +583,8 @@ export default function Dashboard() {
                       </p>
                     </div>
 
-                    {/* File Upload con nota lateral */}
-                    <div className="flex flex-col md:flex-row gap-4 items-start">
+                    {/* File Upload */}
+                    <div className="space-y-2">
                       <div className="flex-1 space-y-2">
                         <Label htmlFor="files" className="font-medium">Archivos adjuntos *</Label>
                         <div className="flex items-center gap-2">
@@ -641,11 +636,6 @@ export default function Dashboard() {
                             ))}
                           </div>
                         )}
-                      </div>
-
-                      {/* Nota lateral */}
-                      <div className="md:w-56 text-xs text-muted-foreground bg-amber-50 border border-amber-200 rounded-md p-3 flex-shrink-0">
-                        Diseñado específicamente para adjuntar la Hoja de Producto del Excel de Innovación, evitando la creación manual de fichas dentro de la app
                       </div>
                     </div>
 

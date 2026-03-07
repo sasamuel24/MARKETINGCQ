@@ -125,6 +125,12 @@ export default function SolicitudDetailPage() {
   const [confirmDeleteFileId, setConfirmDeleteFileId] = useState<number | null>(null);
   const [deletingFileId, setDeletingFileId] = useState<number | null>(null);
 
+  // Card expandida por tipo de documento (área 4)
+  const [expandedDocType, setExpandedDocType] = useState<"ARTE" | "EVIDENCIA" | "CONSOLIDADO" | null>(null);
+
+  // IDs de aprobadores registrados para la etapa actual
+  const [currentStageApproverIds, setCurrentStageApproverIds] = useState<number[]>([]);
+
   useEffect(() => {
     const token = localStorage.getItem("access_token");
     if (!token) {
@@ -188,11 +194,30 @@ export default function SolicitudDetailPage() {
 
       // Cargar eventos/comentarios
       fetchEventos(token);
+
+      // Cargar aprobadores de la etapa actual
+      if (data.stage?.id) {
+        fetchCurrentStageApprovers(token, data.stage.id);
+      }
     } catch (err) {
       console.error("Error fetching solicitud:", err);
       setError(err instanceof Error ? err.message : "Error desconocido");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCurrentStageApprovers = async (token: string, stageId: number) => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/etapa-aprobadores/etapa/${stageId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data: Array<{ user: { id: number } }> = await res.json();
+        setCurrentStageApproverIds(data.map((a) => a.user.id));
+      }
+    } catch (err) {
+      console.error("Error fetching stage approvers:", err);
     }
   };
 
@@ -362,8 +387,13 @@ export default function SolicitudDetailPage() {
     setSubmittingAprobar(true);
     const token = localStorage.getItem("access_token");
 
+    // Área 4: creador usa cerrar-diagnostico; aprobador registrado usa /aprobar (con lógica multi-aprobador)
+    const endpoint = solicitud?.area.id === 4 && !isApprover
+      ? `${API_URL}/api/v1/solicitudes/${solicitudId}/cerrar-diagnostico`
+      : `${API_URL}/api/v1/solicitudes/${solicitudId}/aprobar`;
+
     try {
-      const res = await fetch(`${API_URL}/api/v1/solicitudes/${solicitudId}/aprobar`, {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -496,6 +526,11 @@ export default function SolicitudDetailPage() {
       showToast("Selecciona al menos un archivo", "error");
       return;
     }
+    const existingCount = solicitud?.files.filter((f) => f.doc_type === uploadDocType).length ?? 0;
+    if (uploadDocType !== "EVIDENCIA" && existingCount + uploadFiles.length > 3) {
+      showToast(`Solo se permiten 3 archivos por tipo. Ya hay ${existingCount} en "${uploadDocType}".`, "error");
+      return;
+    }
     setUploading(true);
     const token = localStorage.getItem("access_token");
     try {
@@ -556,10 +591,23 @@ export default function SolicitudDetailPage() {
   // PRODUCCION_BEBIDAS_PASTELERIA (area_id = 4) – Vista Figma
   // ─────────────────────────────────────────────────────────────
   if (solicitud.area.id === 4) {
-    const feedbackEventos = eventos.filter((e) => e.action === "APPROVED" || e.action === "COMMENTED");
+    const feedbackEventos = eventos.filter((e) => e.action === "APPROVED" || e.action === "COMMENTED" || e.action === "SUBMITTED");
     const ajustesEventos  = eventos.filter((e) => e.action === "REQUEST_CHANGES" || e.action === "REJECTED");
     const filteredEventos  = comentarioFilter === "feedback" ? feedbackEventos : ajustesEventos;
-    const canCerrar = isApprover && !isAjustesSolicitados && !isAprobadoFinal && !isRechazado && !userAlreadyApproved;
+
+    // El usuario es aprobador de la etapa ACTUAL (no de una etapa ya superada)
+    const isCurrentStageApprover = user ? currentStageApproverIds.includes(parseInt(user.id)) : false;
+    // El usuario ya aprobó en la etapa actual
+    const alreadyApprovedCurrentStage = userAlreadyApproved;
+    // El usuario aprobó en alguna etapa anterior (la etapa ya avanzó)
+    const approvedInPreviousStage = !isCurrentStageApprover && eventos.some(
+      (e) => e.action === "APPROVED" && e.actor.id.toString() === user?.id
+    );
+
+    // Creador: puede "Cerrar Diagnóstico" para enviar al aprobador (siempre que no esté en estado terminal ni ajustes pendientes)
+    // Aprobador de la etapa actual: puede aprobar mientras no haya ya aprobado
+    const canCerrar = !isAprobadoFinal && !isRechazado &&
+      (isCreator || (isCurrentStageApprover && !alreadyApprovedCurrentStage && !isAjustesSolicitados));
 
     const getDocTypeLabel = (docType: string) => {
       if (docType === "ARTE")        return "Hoja de Producto";
@@ -607,7 +655,7 @@ export default function SolicitudDetailPage() {
                 <img
                   src={productImageUrl}
                   alt={solicitud.title}
-                  className="w-24 h-24 rounded-xl object-cover flex-shrink-0 shadow-sm"
+                  className="w-40 h-40 rounded-xl object-cover flex-shrink-0 shadow-sm"
                 />
               )}
             </div>
@@ -654,76 +702,136 @@ export default function SolicitudDetailPage() {
             </div>
           </div>
 
-          {/* Archivos – tarjetas en grid */}
-          {solicitud.files.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {solicitud.files.map((file) => (
-                <div key={file.id} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-2">
-                  <div className="flex items-start gap-2">
-                    <FileText className="h-6 w-6 flex-shrink-0 mt-0.5" style={{ color: "#339b92" }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold leading-snug">{getDocTypeLabel(file.doc_type)}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{getDocTypeDesc(file.doc_type)}</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-400 truncate pl-8">{file.filename}</p>
+          {/* Archivos – 3 tarjetas fijas por tipo, expandibles */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {(["ARTE", "EVIDENCIA", "CONSOLIDADO"] as const).map((tipo) => {
+              const tipoFiles = solicitud.files.filter((f) => f.doc_type === tipo);
+              const isExpanded = expandedDocType === tipo;
+              const atLimit = tipo !== "EVIDENCIA" && tipoFiles.length >= 3;
 
-                  {/* Confirmación inline de eliminación */}
-                  {confirmDeleteFileId === file.id ? (
-                    <div className="flex items-center justify-between pt-2 border-t border-red-100 mt-auto bg-red-50 rounded-lg px-2 py-1.5">
-                      <p className="text-xs text-red-600 font-medium">¿Eliminar archivo?</p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setConfirmDeleteFileId(null)}
-                          className="text-xs px-2 py-1 rounded-lg border text-gray-500"
-                          disabled={deletingFileId === file.id}
-                        >
-                          No
-                        </button>
-                        <button
-                          onClick={() => handleDeleteFile(file.id)}
-                          className="text-xs px-2 py-1 rounded-lg text-white font-semibold"
-                          style={{ background: "#dc2626" }}
-                          disabled={deletingFileId === file.id}
-                        >
-                          {deletingFileId === file.id ? "..." : "Sí, eliminar"}
-                        </button>
+              return (
+                <div key={tipo} className="bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col">
+                  {/* Cabecera clickable */}
+                  <button
+                    className="w-full flex items-start justify-between p-4 text-left hover:bg-gray-50 transition-colors"
+                    onClick={() => setExpandedDocType(isExpanded ? null : tipo)}
+                  >
+                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                      <FileText className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: "#339b92" }} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold leading-snug">{getDocTypeLabel(tipo)}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{getDocTypeDesc(tipo)}</p>
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <span
+                            className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{
+                              background: tipoFiles.length === 0 ? "#f3f4f6" : atLimit ? "#fef3c7" : "#e8f5f4",
+                              color: tipoFiles.length === 0 ? "#9ca3af" : atLimit ? "#92400e" : "#339b92",
+                            }}
+                          >
+                            {tipoFiles.length === 0
+                              ? "Sin archivos"
+                              : tipo === "EVIDENCIA"
+                              ? `${tipoFiles.length} archivo${tipoFiles.length > 1 ? "s" : ""}`
+                              : `${tipoFiles.length}/3 archivo${tipoFiles.length > 1 ? "s" : ""}`}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  ) : (
-                    <div className="flex justify-between pt-2 border-t border-gray-100 mt-auto">
-                      <button
-                        onClick={() => setConfirmDeleteFileId(file.id)}
-                        className="text-gray-300 hover:text-red-400 transition-colors"
-                        title="Eliminar"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                      <div className="flex gap-4">
-                        {(file.content_type.startsWith("image/") || file.content_type === "application/pdf") && (
-                          <button
-                            onClick={() => handlePreviewFile(file.id, file.filename, file.content_type)}
-                            disabled={loadingPreview}
-                            className="text-gray-400 hover:text-[#339b92] transition-colors"
-                            title="Ver"
-                          >
-                            <Eye className="h-5 w-5" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDownloadFile(file.id, file.filename)}
-                          className="text-gray-400 hover:text-[#339b92] transition-colors"
-                          title="Descargar"
-                        >
-                          <Download className="h-5 w-5" />
-                        </button>
-                      </div>
+                    <span className="text-gray-400 text-lg leading-none ml-2 flex-shrink-0">
+                      {isExpanded ? "−" : "+"}
+                    </span>
+                  </button>
+
+                  {/* Lista expandida */}
+                  {isExpanded && (
+                    <div className="border-t border-gray-100 px-3 pb-3">
+                      {tipoFiles.length === 0 ? (
+                        <p className="text-xs text-gray-400 py-4 text-center">
+                          No hay archivos de este tipo
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5 pt-2">
+                          {tipoFiles.map((file) => (
+                            <div
+                              key={file.id}
+                              className="rounded-lg border border-gray-100 bg-gray-50"
+                            >
+                              {/* Nombre del archivo */}
+                              <div className="flex items-center gap-2 px-3 pt-2 pb-1 min-w-0">
+                                <FileText className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                                <span className="text-xs text-gray-600 truncate">{file.filename}</span>
+                              </div>
+
+                              {/* Acciones */}
+                              {confirmDeleteFileId === file.id ? (
+                                <div className="flex items-center justify-between px-3 pb-2">
+                                  <p className="text-xs text-red-500 font-medium">¿Eliminar?</p>
+                                  <div className="flex gap-1.5">
+                                    <button
+                                      onClick={() => setConfirmDeleteFileId(null)}
+                                      className="text-xs px-2 py-0.5 rounded border text-gray-500"
+                                      disabled={deletingFileId === file.id}
+                                    >
+                                      No
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteFile(file.id)}
+                                      className="text-xs px-2 py-0.5 rounded text-white font-medium"
+                                      style={{ background: "#dc2626" }}
+                                      disabled={deletingFileId === file.id}
+                                    >
+                                      {deletingFileId === file.id ? "…" : "Sí"}
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-end gap-3 px-3 pb-2">
+                                  {(file.content_type.startsWith("image/") ||
+                                    file.content_type === "application/pdf") && (
+                                    <button
+                                      onClick={() =>
+                                        handlePreviewFile(file.id, file.filename, file.content_type)
+                                      }
+                                      disabled={loadingPreview}
+                                      className="text-gray-400 hover:text-[#339b92] transition-colors"
+                                      title="Vista previa"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => handleDownloadFile(file.id, file.filename)}
+                                    className="text-gray-400 hover:text-[#339b92] transition-colors"
+                                    title="Descargar"
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDeleteFileId(file.id)}
+                                    className="text-gray-300 hover:text-red-400 transition-colors"
+                                    title="Eliminar"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {atLimit && (
+                        <p className="text-xs text-amber-600 font-medium text-center mt-2 pb-1">
+                          Límite de 3 archivos alcanzado para este tipo
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
 
           {/* ── Panel: Agregar documentos ── */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
@@ -740,23 +848,37 @@ export default function SolicitudDetailPage() {
 
             {showUploadPanel && (
               <div className="px-5 pb-5 flex flex-col gap-3 border-t border-gray-100">
-                {/* Selector de tipo */}
+                {/* Selector de tipo con contador */}
                 <div className="flex gap-2 flex-wrap pt-3">
-                  {(["ARTE", "EVIDENCIA", "CONSOLIDADO"] as const).map((tipo) => (
-                    <button
-                      key={tipo}
-                      onClick={() => setUploadDocType(tipo)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
-                      style={{
-                        background: uploadDocType === tipo ? "#339b92" : "white",
-                        color: uploadDocType === tipo ? "white" : "#339b92",
-                        borderColor: "#339b92",
-                      }}
-                    >
-                      {tipo === "ARTE" ? "Hoja de Producto" : tipo === "EVIDENCIA" ? "Evidencia Fotográfica" : "Doc. Consolidado"}
-                    </button>
-                  ))}
+                  {(["ARTE", "EVIDENCIA", "CONSOLIDADO"] as const).map((tipo) => {
+                    const count = solicitud.files.filter((f) => f.doc_type === tipo).length;
+                    const full = tipo !== "EVIDENCIA" && count >= 3;
+                    return (
+                      <button
+                        key={tipo}
+                        onClick={() => { if (!full) setUploadDocType(tipo); }}
+                        disabled={full}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{
+                          background: uploadDocType === tipo ? "#339b92" : "white",
+                          color: uploadDocType === tipo ? "white" : "#339b92",
+                          borderColor: "#339b92",
+                        }}
+                      >
+                        {tipo === "ARTE" ? "Hoja de Producto" : tipo === "EVIDENCIA" ? "Evidencia Fotográfica" : "Doc. Consolidado"}
+                        {" "}
+                        <span className="opacity-75">({tipo === "EVIDENCIA" ? count : `${count}/3`})</span>
+                      </button>
+                    );
+                  })}
                 </div>
+
+                {/* Aviso si el tipo seleccionado está lleno */}
+                {solicitud.files.filter((f) => f.doc_type === uploadDocType).length >= 3 && (
+                  <p className="text-xs text-amber-600 font-medium">
+                    Este tipo ya tiene 3 archivos. Elimina uno antes de agregar otro.
+                  </p>
+                )}
 
                 {/* Zona de drop */}
                 <label
@@ -886,6 +1008,8 @@ export default function SolicitudDetailPage() {
                                   ? "#1a5c38"
                                   : evento.action === "REJECTED"
                                   ? "#fee2e2"
+                                  : evento.action === "SUBMITTED"
+                                  ? "#e8f5f4"
                                   : evento.action === "COMMENTED"
                                   ? "#e8f5f4"
                                   : "#fef3c7",
@@ -894,6 +1018,8 @@ export default function SolicitudDetailPage() {
                                   ? "white"
                                   : evento.action === "REJECTED"
                                   ? "#dc2626"
+                                  : evento.action === "SUBMITTED"
+                                  ? "#339b92"
                                   : evento.action === "COMMENTED"
                                   ? "#339b92"
                                   : "#92400e",
@@ -907,6 +1033,8 @@ export default function SolicitudDetailPage() {
                               ? "Rechazado"
                               : evento.action === "COMMENTED"
                               ? "Comentario"
+                              : evento.action === "SUBMITTED"
+                              ? "Diagnóstico cerrado"
                               : evento.action}
                           </span>
                           <p className="text-xs text-gray-400 mt-1 whitespace-nowrap">
@@ -953,16 +1081,7 @@ export default function SolicitudDetailPage() {
             </div>
           </div>
 
-          {/* Subir nueva versión (CREATOR con ajustes pendientes) */}
-          {isCreator && isAjustesSolicitados && (
-            <button
-              onClick={() => router.push(`/solicitudes/${solicitud.id}/upload`)}
-              className="w-full py-4 font-semibold text-base text-white rounded-2xl transition-colors"
-              style={{ background: "#339b92" }}
-            >
-              Subir nueva versión
-            </button>
-          )}
+          {/* Subir nueva versión — no aplica en área 4, el creador usa "Cerrar Diagnóstico" directamente */}
 
           {/* Cerrar Diagnóstico Técnico */}
           {canCerrar && (
@@ -971,12 +1090,12 @@ export default function SolicitudDetailPage() {
               className="w-full py-4 font-semibold text-base text-white rounded-2xl transition-colors"
               style={{ background: "#339b92" }}
             >
-              Cerrar Diagnóstico Técnico
+              {solicitud.stage.code === "PROD_E3" ? "Aprobar" : "Cerrar Diagnóstico Técnico"}
             </button>
           )}
 
-          {/* Solicitar ajustes / Rechazar (aprobadores) */}
-          {isApprover && !isAjustesSolicitados && !isAprobadoFinal && !isRechazado && !userAlreadyApproved && (
+          {/* Solicitar ajustes / Rechazar (aprobadores de la etapa actual — oculto en PROD_E3 "Filtro por Gerencias") */}
+          {isCurrentStageApprover && !alreadyApprovedCurrentStage && !isAjustesSolicitados && !isAprobadoFinal && !isRechazado && solicitud.stage.code !== "PROD_E3" && (
             <div className="flex gap-3">
               <button
                 onClick={() => setShowAjustesDialog(true)}
@@ -994,10 +1113,17 @@ export default function SolicitudDetailPage() {
             </div>
           )}
 
-          {/* Estado ya aprobado por este usuario */}
-          {isApprover && !isAjustesSolicitados && !isAprobadoFinal && !isRechazado && userAlreadyApproved && (
+          {/* Estado ya aprobado por este usuario en la etapa actual */}
+          {isCurrentStageApprover && !isAjustesSolicitados && !isAprobadoFinal && !isRechazado && alreadyApprovedCurrentStage && (
             <div className="bg-white rounded-2xl p-4 text-sm text-gray-500 text-center shadow-sm">
               Tu aprobación ha sido registrada para esta etapa. La solicitud avanzará cuando todos los aprobadores hayan dado su visto bueno.
+            </div>
+          )}
+
+          {/* El usuario aprobó en una etapa anterior (la solicitud ya avanzó) */}
+          {approvedInPreviousStage && !isAprobadoFinal && !isRechazado && (
+            <div className="bg-white rounded-2xl p-4 text-sm text-gray-500 text-center shadow-sm">
+              Ya registraste tu aprobación en esta solicitud. La solicitud está siendo procesada en la siguiente etapa.
             </div>
           )}
 
