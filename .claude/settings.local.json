@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git show:*)",
+      "Bash(ls /c/desarollos/MARKETINGCQ/*.pem 2>/dev/null && file /c/desarollos/MARKETINGCQ/key-mercadeo.pem)",
+      "Bash(git -C /c/desarollos/MARKETINGCQ status && git -C /c/desarollos/MARKETINGCQ log --oneline -3)",
+      "Bash(git -C /c/desarollos/MARKETINGCQ log --oneline origin/main..HEAD.)",
+      "Bash(chmod 400 /c/desarollos/MARKETINGCQ/key-mercadeo.pem && ssh -i \"/c/desarollos/MARKETINGCQ/key-mercadeo.pem\" -o StrictHostKeyChecking=no ubuntu@18.188.28.168 \"systemctl list-units --type=service --state=running | grep -iE 'market|cafequin|api|uvicorn|gunicorn|fastapi' && echo '---' && ls ~/ && echo '---' && ls ~/MARKETINGCQ 2>/dev/null || ls ~/ 2>/dev/null\")"
+    ]
+  }
+}
