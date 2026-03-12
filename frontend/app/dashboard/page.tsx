@@ -1087,13 +1087,13 @@ export default function Dashboard() {
               <div className="bg-gradient-to-r from-[#00829a] to-[#00a3b4] px-6 py-4">
                 <CardTitle className="text-white text-xl font-bold">Solicitudes por aprobar</CardTitle>
                 <CardDescription className="text-white/90 font-normal">
-                  {solicitudes.length === 0
+                  {filteredSolicitudes.length === 0
                     ? "No tienes aprobaciones pendientes."
-                    : `Tienes ${solicitudes.length} solicitudes pendientes.`}
+                    : `Tienes ${filteredSolicitudes.length} solicitudes pendientes.`}
                 </CardDescription>
               </div>
               <CardContent className="pt-6">
-                {solicitudes.length > 0 ? (
+                {filteredSolicitudes.length > 0 ? (
                   <div className="overflow-auto rounded-md border" style={{ maxHeight: 420 }}>
                   <Table>
                     <TableHeader>
@@ -1107,7 +1107,7 @@ export default function Dashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {solicitudes.map((sol) => (
+                      {filteredSolicitudes.map((sol) => (
                         <TableRow key={sol.id}>
                           <TableCell className="font-medium">{sol.title}</TableCell>
                           <TableCell>{formatDate(sol.created_at)}</TableCell>
