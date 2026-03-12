@@ -13,7 +13,7 @@ EC2_USER="ubuntu"
 KEY_FILE="./key-mercadeo.pem"
 REPO_PATH="/home/ubuntu/MARKETINGCQ"
 BACKEND_PATH="/home/ubuntu/MARKETINGCQ/backend"
-VENV_PATH="/home/ubuntu/MARKETINGCQ/venv"
+VENV_PATH="/home/ubuntu/MARKETINGCQ/backend/venv"
 SERVICE_NAME="marketingcq"
 BRANCH="main"
 # ─────────────────────────────────────────────────────────────────────────────

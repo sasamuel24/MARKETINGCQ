@@ -8,7 +8,7 @@ set -euo pipefail
 
 REPO_PATH="/home/ubuntu/MARKETINGCQ"
 BACKEND_PATH="/home/ubuntu/MARKETINGCQ/backend"
-VENV_PATH="/home/ubuntu/MARKETINGCQ/venv"
+VENV_PATH="/home/ubuntu/MARKETINGCQ/backend/venv"
 SERVICE_NAME="marketingcq"
 BRANCH="main"
 
