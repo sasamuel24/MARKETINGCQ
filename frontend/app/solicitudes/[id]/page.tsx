@@ -411,9 +411,10 @@ export default function SolicitudDetailPage() {
       setSolicitud(updatedSolicitud);
       setShowAprobarDialog(false);
       setAprobarComment("");
-      
-      // Recargar eventos para mostrar el nuevo comentario
+
+      // Recargar eventos y aprobadores de la nueva etapa
       fetchEventos(token!);
+      fetchCurrentStageApprovers(token!, updatedSolicitud.stage.id);
       
       // Mensaje según el nuevo estado
       if (updatedSolicitud.state.code === "APROBADO_FINAL") {
