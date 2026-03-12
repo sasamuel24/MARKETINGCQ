@@ -636,12 +636,14 @@ class SolicitudService:
         # Buscar la siguiente etapa en orden dentro del área
         etapa_actual = self.etapa_repository.get_by_id(solicitud.stage_id)
 
-        # Si ya hubo un REQUEST_CHANGES en la etapa actual, el creador está re-enviando
-        # tras ajustes: NO avanzar, volver a la misma etapa para que el mismo aprobador revise
+        # Si ya hubo un REQUEST_CHANGES de un APROBADOR en la etapa actual, el creador
+        # está re-enviando tras ajustes: NO avanzar, dejar que el mismo aprobador revise.
+        # Se excluye el propio creador para evitar bloqueos por eventos mal generados.
         hubo_ajuste_en_etapa_actual = self.repository.db.query(SolicitudEvento).filter(
             SolicitudEvento.solicitud_id == solicitud_id,
             SolicitudEvento.stage_id == solicitud.stage_id,
             SolicitudEvento.action == EventAction.REQUEST_CHANGES,
+            SolicitudEvento.actor_user_id != solicitud.created_by_user_id,
         ).first()
 
         if hubo_ajuste_en_etapa_actual:
