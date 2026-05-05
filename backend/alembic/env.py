@@ -13,7 +13,11 @@ from db.base import Base
 from core.config import settings
 
 # Importar todos los modelos aquí para que Alembic los detecte
-from db.models import Role, Area, User, Estado, Etapa, EtapaAprobador, Solicitud, SolicitudFile, SolicitudEvento, ApprovalMode, EventAction  # noqa
+from db.models import (  # noqa
+    Role, Area, User, Estado, Etapa, EtapaAprobador,
+    Solicitud, SolicitudFile, SolicitudEvento, ApprovalMode, EventAction,
+    Iniciativa, IniciativaStatus, ApprovalToken, ApprovalTokenAction, Notificacion,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

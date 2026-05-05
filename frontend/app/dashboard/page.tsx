@@ -1,14 +1,15 @@
 ﻿"use client";
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, FileText, X } from "lucide-react";
+import { Upload, FileText, X, Lightbulb, Plus, Search, ChevronRight } from "lucide-react";
 import { ToastContainer, ToastData } from "@/components/ui/toast-simple";
+import { NotificationBell } from "@/components/ui/notification-bell";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -61,6 +62,32 @@ interface Etapa {
   area_id: number;
 }
 
+interface Iniciativa {
+  id: number;
+  titulo: string;
+  producto_propuesto: string;
+  analisis_competencia?: string;
+  business_case_path?: string;
+  status: string;
+  solicitud_id?: number;
+  solicitud_innovacion_id?: number;
+  created_at: string;
+  updated_at: string;
+  created_by?: { id: number; full_name: string };
+}
+
+const INI_STATUS_CONFIG: Record<string, { label: string; color: string; step: number }> = {
+  BORRADOR:                  { label: "Borrador",          color: "bg-gray-100 text-gray-600 border-gray-200",      step: 1 },
+  APROBADA_GG:               { label: "En Prototipado",    color: "bg-purple-100 text-purple-700 border-purple-200", step: 2 },
+  EN_PROTOTIPADO:            { label: "En Prototipado",    color: "bg-purple-100 text-purple-700 border-purple-200", step: 2 },
+  PENDIENTE_APROBACION_DUAL: { label: "Aprobación Dual",   color: "bg-orange-100 text-orange-700 border-orange-200", step: 3 },
+  PENDIENTE_JD:              { label: "Junta Directiva",   color: "bg-indigo-100 text-indigo-700 border-indigo-200", step: 4 },
+  APROBADA_JD:               { label: "Aprobada",          color: "bg-green-100 text-green-700 border-green-200",    step: 5 },
+  RECHAZADA_JD:              { label: "Rechazada",         color: "bg-red-100 text-red-700 border-red-200",          step: 0 },
+};
+
+const INI_STEPS = ["Borrador", "Prototipado", "Aprobación Dual", "Junta Directiva", "Aprobada"];
+
 interface NewSolicitudForm {
   nombre_arte: string;
   descripcion: string;
@@ -73,6 +100,8 @@ interface NewSolicitudForm {
 
 export default function Dashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const vincularIniciativaId = searchParams?.get("vincular_iniciativa");
   const [user, setUser] = useState<User | null>(null);
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
   const [allSolicitudes, setAllSolicitudes] = useState<Solicitud[]>([]); // Para APPROVERS: todas las solicitudes
@@ -88,6 +117,11 @@ export default function Dashboard() {
   const [globalSearchTerm, setGlobalSearchTerm] = useState("");
   const [globalStatusFilter, setGlobalStatusFilter] = useState("ALL");
   const [globalAreaFilter, setGlobalAreaFilter] = useState("ALL");
+
+  // Director: iniciativas
+  const [iniciativas, setIniciativas] = useState<Iniciativa[]>([]);
+  const [iniSearch, setIniSearch] = useState("");
+  const [iniStatusFilter, setIniStatusFilter] = useState("ALL");
   
   // Form state for CREATOR
   const [formData, setFormData] = useState<NewSolicitudForm>({
@@ -118,6 +152,7 @@ export default function Dashboard() {
       router.push("/login");
       return;
     }
+    let currentUser: User | null = null;
     fetch(`${API_URL}/api/v1/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -126,14 +161,37 @@ export default function Dashboard() {
         return res.json();
       })
       .then((userData) => {
+        currentUser = userData;
         setUser(userData);
         fetchSolicitudes(userData, token);
         fetchAreas(token);
         fetchEstados(token);
         fetchEtapas(token);
+        if (userData.role === "DIRECTOR" || (userData.rol_id === 2 && userData.area_id === 4)) fetchIniciativas(token);
       })
       .catch(() => router.push("/login"));
+
+    // Auto-refresh solicitudes cada 30s para recibir solicitudes auto-creadas (ej. desde Iniciativas)
+    const interval = setInterval(() => {
+      const t = localStorage.getItem("access_token");
+      if (t && currentUser) fetchSolicitudes(currentUser, t, true);
+    }, 30000);
+    return () => clearInterval(interval);
   }, [router]);
+
+  const fetchIniciativas = async (token: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/iniciativas?page_size=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIniciativas(data.iniciativas || []);
+      }
+    } catch (err) {
+      console.error("Error fetching iniciativas:", err);
+    }
+  };
 
   const fetchAreas = async (token: string) => {
     try {
@@ -196,7 +254,25 @@ export default function Dashboard() {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
-        setSolicitudes(data.solicitudes || []);
+        let solList: Solicitud[] = data.solicitudes || [];
+
+        // Para CREATORs: también cargar solicitudes del área (incluye las auto-creadas desde Iniciativas)
+        if (currentUser.rol_id === 2 && currentUser.area_id) {
+          try {
+            const areaRes = await fetch(`${API_URL}/api/v1/solicitudes/area/${currentUser.area_id}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (areaRes.ok) {
+              const areaData = await areaRes.json();
+              const areaSols: Solicitud[] = areaData.solicitudes || areaData || [];
+              // Merge sin duplicados
+              const ids = new Set(solList.map((s) => s.id));
+              areaSols.forEach((s) => { if (!ids.has(s.id)) solList.push(s); });
+            }
+          } catch {}
+        }
+
+        setSolicitudes(solList);
       }
     } catch (err) {
       console.error(err);
@@ -402,6 +478,21 @@ export default function Dashboard() {
       
       const newSolicitud = await res.json();
       console.log("Solicitud creada exitosamente:", newSolicitud);
+
+      // Si venimos desde una iniciativa, vincular automáticamente
+      if (vincularIniciativaId) {
+        try {
+          await fetch(
+            `${API_URL}/api/v1/iniciativas/${vincularIniciativaId}/vincular-prototipado?solicitud_id=${newSolicitud.id}`,
+            { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+          );
+          showToast(`✓ Solicitud #${newSolicitud.id} creada y vinculada a la iniciativa`);
+          router.push(`/iniciativas/${vincularIniciativaId}`);
+          return;
+        } catch {
+          showToast("Solicitud creada pero no se pudo vincular automáticamente", "error");
+        }
+      }
       
       // Upload files directamente a S3 con presigned URLs (evita límite 10MB de API Gateway)
       if (formData.files.length > 0) {
@@ -449,7 +540,9 @@ export default function Dashboard() {
 
   const isApprover = user.role === "APPROVER" || user.rol_id === 3;
   const isCreator = user.role === "CREATOR" || user.rol_id === 2;
-  const isInnovacionCreator = isCreator && user.area_id === 4;
+  const isDirector = user.role === "DIRECTOR";
+  const isInnovacionCreator = isCreator && user.area_id === 4;       // Área 4: Prototipado/Bebidas
+  const isInnovacionArea = isCreator && user.area_id === 2;          // Área 2: INNOVACION (recibe solicitudes automáticas)
 
   return (
     <div className="flex w-full flex-col min-h-screen">
@@ -481,21 +574,24 @@ export default function Dashboard() {
                 </div>
                 <div className="bg-[#96c121] rounded-full px-4 py-1.5">
                   <p className="text-white text-sm font-semibold">
-                    {isApprover ? "Aprobador" : "Creador"}
+                    {isDirector ? "Directora de Mercadeo" : isApprover ? "Aprobador" : "Creador"}
                   </p>
                 </div>
               </div>
             </div>
-            <Button 
-              className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
-              variant="outline" 
-              onClick={() => {
-                localStorage.clear();
-                router.push("/login");
-              }}
-            >
-              Cerrar sesión
-            </Button>
+            <div className="flex items-center gap-3">
+              <NotificationBell />
+              <Button
+                className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
+                variant="outline"
+                onClick={() => {
+                  localStorage.clear();
+                  router.push("/login");
+                }}
+              >
+                Cerrar sesión
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -503,259 +599,349 @@ export default function Dashboard() {
       {/* Contenido principal */}
       <div className="flex-1 bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-10">
         <div className="flex flex-col gap-6">
-          {isCreator ? (
+          {isDirector ? (
+            /* ── VISTA DIRECTORA DE MERCADEO ── */
+            <Card className="shadow-lg border-0 overflow-hidden">
+              <div className="bg-gradient-to-r from-[#00829a] to-[#00a3b4] px-6 py-4 flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-white text-xl font-bold uppercase tracking-wide">
+                    Mis Iniciativas de Producto
+                  </CardTitle>
+                  <CardDescription className="text-white/90 font-normal">
+                    Trazabilidad completa del flujo de aprobación
+                  </CardDescription>
+                </div>
+                <Button
+                  className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
+                  variant="outline"
+                  onClick={() => router.push("/iniciativas/nueva")}
+                >
+                  <Plus className="h-4 w-4 mr-2" /> Nueva Iniciativa
+                </Button>
+              </div>
+              <CardContent className="pt-6">
+                {/* Filtros */}
+                <div className="flex flex-col sm:flex-row gap-3 mb-5">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por título o producto..."
+                      value={iniSearch}
+                      onChange={(e) => setIniSearch(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <select
+                    value={iniStatusFilter}
+                    onChange={(e) => setIniStatusFilter(e.target.value)}
+                    className="border rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#00829a]/40"
+                  >
+                    <option value="ALL">Todos los estados</option>
+                    {Object.entries(INI_STATUS_CONFIG).map(([key, cfg]) => (
+                      <option key={key} value={key}>{cfg.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {(() => {
+                  const filtered = iniciativas.filter((i) => {
+                    const matchSearch =
+                      i.titulo.toLowerCase().includes(iniSearch.toLowerCase()) ||
+                      i.producto_propuesto.toLowerCase().includes(iniSearch.toLowerCase());
+                    const matchStatus = iniStatusFilter === "ALL" || i.status === iniStatusFilter;
+                    return matchSearch && matchStatus;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="py-14 flex flex-col items-center gap-4 text-center">
+                        <div className="bg-[#00829a]/10 rounded-full p-5">
+                          <Lightbulb className="h-10 w-10 text-[#00829a]" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-700">No hay iniciativas aún</p>
+                          <p className="text-sm text-muted-foreground mt-1">Crea tu primera iniciativa de producto</p>
+                        </div>
+                        <Button
+                          className="bg-[#00829a] hover:bg-[#006d82] text-white"
+                          onClick={() => router.push("/iniciativas/nueva")}
+                        >
+                          <Plus className="h-4 w-4 mr-2" /> Nueva Iniciativa
+                        </Button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="flex flex-col gap-4">
+                      {filtered.map((ini) => {
+                        const cfg = INI_STATUS_CONFIG[ini.status] || { label: ini.status, color: "bg-gray-100 text-gray-600 border-gray-200", step: 0 };
+                        const currentStep = cfg.step;
+                        return (
+                          <div
+                            key={ini.id}
+                            className="border rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer bg-white"
+                            onClick={() => router.push(`/iniciativas/${ini.id}`)}
+                          >
+                            <div className="flex items-start justify-between gap-3 mb-4">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs font-mono text-muted-foreground">#{ini.id}</span>
+                                  <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${cfg.color}`}>
+                                    {cfg.label}
+                                  </span>
+                                  {!ini.business_case_path && ini.status === "BORRADOR" && (
+                                    <span className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium bg-red-50 text-red-600 border-red-200">
+                                      Sin Business Case
+                                    </span>
+                                  )}
+                                </div>
+                                <h3 className="font-semibold text-gray-900 truncate">{ini.titulo}</h3>
+                                <p className="text-sm text-muted-foreground truncate mt-0.5">{ini.producto_propuesto}</p>
+                              </div>
+                              <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0 mt-1" />
+                            </div>
+
+                            {/* Stepper de trazabilidad */}
+                            <div className="flex items-center gap-1">
+                              {INI_STEPS.map((step, i) => {
+                                const stepNum = i + 1;
+                                const done = ini.status !== "RECHAZADA_JD" && currentStep > stepNum;
+                                const active = currentStep === stepNum || (stepNum === 2 && (ini.status === "APROBADA_GG" || ini.status === "EN_PROTOTIPADO"));
+                                const rejected = ini.status === "RECHAZADA_JD";
+                                return (
+                                  <React.Fragment key={step}>
+                                    <div className="flex flex-col items-center" style={{ minWidth: 52 }}>
+                                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${
+                                        rejected && i === 0 ? "border-red-400 bg-red-400 text-white" :
+                                        done ? "border-[#96c121] bg-[#96c121] text-white" :
+                                        active ? "border-[#00829a] bg-[#00829a] text-white" :
+                                        "border-gray-200 bg-gray-100 text-gray-400"
+                                      }`}>
+                                        {done ? "✓" : stepNum}
+                                      </div>
+                                      <span className={`text-[9px] mt-0.5 text-center leading-tight ${
+                                        active ? "text-[#00829a] font-semibold" : "text-gray-400"
+                                      }`}>{step}</span>
+                                    </div>
+                                    {i < INI_STEPS.length - 1 && (
+                                      <div className={`flex-1 h-0.5 mb-4 ${done ? "bg-[#96c121]" : "bg-gray-200"}`} />
+                                    )}
+                                  </React.Fragment>
+                                );
+                              })}
+                            </div>
+
+                            {/* Links rápidos */}
+                            {(ini.solicitud_id || ini.solicitud_innovacion_id) && (
+                              <div className="mt-3 pt-3 border-t flex gap-4">
+                                {ini.solicitud_id && (
+                                  <button
+                                    className="text-xs text-[#00829a] hover:underline font-medium"
+                                    onClick={(e) => { e.stopPropagation(); router.push(`/solicitudes/${ini.solicitud_id}`); }}
+                                  >
+                                    → Solicitud prototipado #{ini.solicitud_id}
+                                  </button>
+                                )}
+                                {ini.solicitud_innovacion_id && (
+                                  <button
+                                    className="text-xs text-[#96c121] hover:underline font-medium"
+                                    onClick={(e) => { e.stopPropagation(); router.push(`/solicitudes/${ini.solicitud_innovacion_id}`); }}
+                                  >
+                                    → Solicitud innovación #{ini.solicitud_innovacion_id}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          ) : isCreator ? (
           <>
-            {isInnovacionCreator ? (
+            {isInnovacionArea ? (
             <>
-              {/* INNOVACIÓN CREATOR VIEW: Formulario de Innovación */}
+              {/* ── VISTA INNOVACION: sin formulario, solo tabla de solicitudes recibidas ── */}
+              <Card className="shadow-lg border-0 overflow-hidden">
+                <div className="bg-gradient-to-r from-[#00829a] to-[#00a3b4] px-6 py-4 flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-white text-xl font-bold uppercase tracking-wide">
+                      Solicitudes de Innovación
+                    </CardTitle>
+                    <CardDescription className="text-white/90 font-normal">
+                      {solicitudes.length === 0
+                        ? "Aún no hay solicitudes asignadas a tu área."
+                        : `${solicitudes.length} solicitud${solicitudes.length !== 1 ? "es" : ""} en tu área.`}
+                    </CardDescription>
+                  </div>
+                </div>
+                <CardContent className="pt-6">
+                  {/* Banner informativo */}
+                  <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#00829a]/20 bg-[#00829a]/5 px-4 py-3">
+                    <Lightbulb className="h-5 w-5 text-[#00829a] mt-0.5 shrink-0" />
+                    <p className="text-sm text-[#00829a]">
+                      Las solicitudes de Innovación se generan automáticamente cuando la Directora de Mercadeo aprueba una Iniciativa de Producto. Recibirás una notificación en la campana cada vez que llegue una nueva.
+                    </p>
+                  </div>
+
+                  {solicitudes.length === 0 ? (
+                    <div className="py-14 flex flex-col items-center gap-4 text-center">
+                      <div className="bg-[#00829a]/10 rounded-full p-5">
+                        <Lightbulb className="h-10 w-10 text-[#00829a]" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-700">Sin solicitudes por ahora</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Cuando se apruebe una Iniciativa de Producto, aparecerá aquí automáticamente.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="overflow-auto rounded-md border" style={{ maxHeight: 420 }}>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="sticky top-0 bg-background z-10">ID</TableHead>
+                            <TableHead className="sticky top-0 bg-background z-10">Nombre</TableHead>
+                            <TableHead className="sticky top-0 bg-background z-10">Estado</TableHead>
+                            <TableHead className="sticky top-0 bg-background z-10">Etapa actual</TableHead>
+                            <TableHead className="sticky top-0 bg-background z-10">Última actualización</TableHead>
+                            <TableHead className="sticky top-0 bg-background z-10 text-right">Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {solicitudes
+                            .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+                            .map((sol) => (
+                              <TableRow key={sol.id}>
+                                <TableCell className="font-mono text-sm">{sol.id}</TableCell>
+                                <TableCell className="font-medium max-w-xs truncate">{sol.title}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="text-xs">{sol.state?.label || sol.state?.code}</Badge>
+                                </TableCell>
+                                <TableCell className="text-sm text-[#00829a] font-medium">
+                                  {sol.stage?.label || "—"}
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {new Date(sol.updated_at).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    size="sm"
+                                    className="bg-[#00829a] hover:bg-[#006d82] text-white"
+                                    onClick={() => router.push(`/solicitudes/${sol.id}`)}
+                                  >
+                                    Ver detalle
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+            ) : isInnovacionCreator ? (
+            <>
+              {/* INNOVACIÓN CREATOR VIEW: Iniciativas pendientes de su acción */}
               <Card className="shadow-lg border-0 overflow-hidden">
                 <div className="bg-gradient-to-r from-[#00829a] to-[#00a3b4] px-6 py-4">
-                  <CardTitle className="text-white text-xl font-bold uppercase tracking-wide">Nueva solicitud</CardTitle>
+                  <CardTitle className="text-white text-xl font-bold uppercase tracking-wide">Iniciativas de Prototipado</CardTitle>
                   <CardDescription className="text-white/90 font-normal">
-                    Crea una solicitud de Innovación
+                    Iniciativas asignadas a tu área para desarrollar
                   </CardDescription>
                 </div>
                 <CardContent className="pt-6">
-                  <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {/* Nombre de la innovación */}
-                      <div className="space-y-2">
-                        <Label htmlFor="nombre_arte" className="font-medium">Nombre de la innovación</Label>
-                        <Input
-                          id="nombre_arte"
-                          placeholder="Ej: Nueva bolsa de café especial"
-                          value={formData.nombre_arte}
-                          onChange={(e) => setFormData(prev => ({ ...prev, nombre_arte: e.target.value }))}
-                          maxLength={80}
-                          className={formErrors.nombre_arte ? "border-red-500" : ""}
-                        />
-                        {formErrors.nombre_arte && (
-                          <p className="text-sm text-red-500">{formErrors.nombre_arte}</p>
-                        )}
-                        <p className="text-xs text-muted-foreground">
-                          {formData.nombre_arte.length}/80 caracteres
-                        </p>
-                      </div>
-
-                      {/* Categoría */}
-                      <div className="space-y-2">
-                        <Label htmlFor="categoria" className="font-medium">Categoría</Label>
-                        <select
-                          id="categoria"
-                          value={formData.categoria}
-                          onChange={(e) => setFormData(prev => ({ ...prev, categoria: e.target.value as "" | "reposteria" | "bebidas" }))}
-                          className={`h-10 w-full rounded-md border-2 ${formErrors.categoria ? "border-red-500" : "border-input"} bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-colors appearance-none cursor-pointer`}
-                          style={{
-                            backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2300829a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                            backgroundPosition: 'right 0.5rem center',
-                            backgroundRepeat: 'no-repeat',
-                            backgroundSize: '1.5em 1.5em',
-                            paddingRight: '2.5rem'
-                          }}
-                        >
-                          <option value="" style={{ backgroundColor: 'white' }}>Seleccionar categoría</option>
-                          <option value="reposteria" style={{ backgroundColor: 'white' }}>Repostería</option>
-                          <option value="bebidas" style={{ backgroundColor: 'white' }}>Bebidas</option>
-                        </select>
-                        {formErrors.categoria && (
-                          <p className="text-sm text-red-500">{formErrors.categoria}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Descripción */}
-                    <div className="space-y-2">
-                      <Label htmlFor="descripcion" className="font-medium">Descripción</Label>
-                      <textarea
-                        id="descripcion"
-                        placeholder="Detalles adicionales sobre la solicitud..."
-                        value={formData.descripcion}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
-                        maxLength={900}
-                        rows={4}
-                        className={`w-full min-w-0 rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 md:text-sm ${formErrors.descripcion ? "border-red-500" : "border-input"}`}
-                      />
-                      {formErrors.descripcion && (
-                        <p className="text-sm text-red-500">{formErrors.descripcion}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {formData.descripcion.length}/900 caracteres
-                      </p>
-                    </div>
-
-                    {/* File Upload */}
-                    <div className="space-y-2">
-                      <div className="flex-1 space-y-2">
-                        <Label htmlFor="files" className="font-medium">Archivos adjuntos *</Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            id="files"
-                            type="file"
-                            multiple
-                            accept="image/*,.pdf,.xlsx,.xls"
-                            onChange={handleFileChange}
-                            className="hidden"
-                          />
-                          <Button
-                            type="button"
-                            onClick={() => document.getElementById("files")?.click()}
-                            className="w-full bg-secondary hover:bg-secondary/90 text-white"
-                          >
-                            <Upload className="mr-2 h-4 w-4" />
-                            Seleccionar archivos
-                          </Button>
+                  {(() => {
+                    const pendientes = iniciativas.filter(i =>
+                      ["APROBADA_GG", "EN_PROTOTIPADO", "PENDIENTE_APROBACION_DUAL"].includes(i.status)
+                    );
+                    if (iniciativas.length === 0) {
+                      return (
+                        <div className="py-14 flex flex-col items-center gap-3 text-center">
+                          <div className="bg-purple-100 rounded-full p-5">
+                            <Lightbulb className="h-10 w-10 text-purple-500" />
+                          </div>
+                          <p className="font-semibold text-gray-700">No hay iniciativas asignadas</p>
+                          <p className="text-sm text-muted-foreground">Cuando la Directora envíe una iniciativa a prototipado, aparecerá aquí.</p>
                         </div>
-                        {formErrors.files && (
-                          <p className="text-sm text-red-500">{formErrors.files}</p>
-                        )}
-
-                        {/* File list */}
-                        {formData.files.length > 0 && (
-                          <div className="mt-2 space-y-2">
-                            {formData.files.map((file, index) => (
-                              <div
-                                key={index}
-                                className="flex items-center justify-between rounded-md border p-2"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <FileText className="h-4 w-4 text-muted-foreground" />
-                                  <span className="text-sm">{file.name}</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    ({(file.size / 1024).toFixed(1)} KB)
-                                  </span>
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => removeFile(index)}
+                      );
+                    }
+                    const grupos: { label: string; color: string; badge: string; items: typeof iniciativas } [] = [
+                      {
+                        label: "Pendientes de vincular",
+                        color: "border-l-purple-400 bg-purple-50",
+                        badge: "bg-purple-100 text-purple-700 border-purple-200",
+                        items: iniciativas.filter(i => i.status === "APROBADA_GG" && !i.solicitud_id),
+                      },
+                      {
+                        label: "En desarrollo",
+                        color: "border-l-blue-400 bg-blue-50",
+                        badge: "bg-blue-100 text-blue-700 border-blue-200",
+                        items: iniciativas.filter(i => i.status === "EN_PROTOTIPADO"),
+                      },
+                      {
+                        label: "Aprobación dual en curso",
+                        color: "border-l-orange-400 bg-orange-50",
+                        badge: "bg-orange-100 text-orange-700 border-orange-200",
+                        items: iniciativas.filter(i => i.status === "PENDIENTE_APROBACION_DUAL"),
+                      },
+                    ];
+                    return (
+                      <div className="flex flex-col gap-6">
+                        {grupos.map((grupo) => grupo.items.length > 0 && (
+                          <div key={grupo.label}>
+                            <div className="flex items-center gap-2 mb-3">
+                              <h3 className="text-sm font-semibold text-gray-700">{grupo.label}</h3>
+                              <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{grupo.items.length}</span>
+                            </div>
+                            <div className="flex flex-col gap-3">
+                              {grupo.items.map((ini) => (
+                                <div
+                                  key={ini.id}
+                                  className={`border-l-4 rounded-r-xl p-4 flex items-center justify-between gap-4 cursor-pointer hover:shadow-sm transition-shadow ${grupo.color}`}
+                                  onClick={() => router.push(`/iniciativas/${ini.id}`)}
                                 >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ))}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-0.5">
+                                      <span className="text-xs font-mono text-muted-foreground">#{ini.id}</span>
+                                      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${grupo.badge}`}>
+                                        {grupo.label}
+                                      </span>
+                                    </div>
+                                    <p className="font-semibold text-gray-900 truncate">{ini.titulo}</p>
+                                    <p className="text-sm text-muted-foreground truncate">{ini.producto_propuesto}</p>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {ini.solicitud_id && (
+                                      <button
+                                        className="text-xs text-[#00829a] hover:underline font-medium"
+                                        onClick={(e) => { e.stopPropagation(); router.push(`/solicitudes/${ini.solicitud_id}`); }}
+                                      >
+                                        Solicitud #{ini.solicitud_id}
+                                      </button>
+                                    )}
+                                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        {pendientes.length === 0 && (
+                          <div className="py-8 text-center text-sm text-muted-foreground">
+                            No hay iniciativas activas en este momento.
                           </div>
                         )}
                       </div>
-                    </div>
-
-                    <Button
-                      type="submit"
-                      disabled={submitting}
-                      className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-5 shadow-lg hover:shadow-xl transition-all duration-200"
-                    >
-                      {submitting ? "Creando solicitud..." : "Crear solicitud"}
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
-
-              {/* INNOVACIÓN CREATOR VIEW: Seguimiento global de solicitudes */}
-              <Card className="shadow-lg border-0 overflow-hidden">
-                <div className="bg-[#00829a] px-6 py-4">
-                  <CardTitle className="text-white text-xl">Seguimiento global de solicitudes</CardTitle>
-                  <CardDescription className="text-white/90">
-                    {allSolicitudes.length === 0
-                      ? "No hay solicitudes en el sistema."
-                      : `${filteredAllSolicitudes.length} de ${allSolicitudes.length} solicitudes.`}
-                  </CardDescription>
-                </div>
-                <CardContent className="pt-6">
-                  <div className="flex flex-col md:flex-row gap-4 mb-4">
-                    <Input
-                      className="md:w-1/3"
-                      placeholder="Buscar por nombre o ID..."
-                      value={globalSearchTerm}
-                      onChange={(e) => setGlobalSearchTerm(e.target.value)}
-                    />
-                    <select
-                      className="md:w-1/4 h-10 rounded-md border-2 border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-colors appearance-none cursor-pointer"
-                      value={globalStatusFilter}
-                      onChange={(e) => setGlobalStatusFilter(e.target.value)}
-                      style={{
-                        backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2300829a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                        backgroundPosition: 'right 0.5rem center',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundSize: '1.5em 1.5em',
-                        paddingRight: '2.5rem'
-                      }}
-                    >
-                      <option value="ALL" style={{ backgroundColor: 'white' }}>Todos los estados</option>
-                      {estados.map((estado) => (
-                        <option key={estado.id} value={estado.id} style={{ backgroundColor: 'white' }}>
-                          {estado.label}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="md:w-1/4 h-10 rounded-md border-2 border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-colors appearance-none cursor-pointer"
-                      value={globalAreaFilter}
-                      onChange={(e) => setGlobalAreaFilter(e.target.value)}
-                      style={{
-                        backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2300829a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                        backgroundPosition: 'right 0.5rem center',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundSize: '1.5em 1.5em',
-                        paddingRight: '2.5rem'
-                      }}
-                    >
-                      <option value="ALL" style={{ backgroundColor: 'white' }}>Todas las áreas</option>
-                      {areas.map((area) => (
-                        <option key={area.id} value={area.id} style={{ backgroundColor: 'white' }}>
-                          {area.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {filteredAllSolicitudes.length > 0 ? (
-                    <div className="overflow-auto rounded-md border" style={{ maxHeight: 420 }}>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="sticky top-0 bg-background z-10">ID</TableHead>
-                          <TableHead className="sticky top-0 bg-background z-10">Nombre del arte</TableHead>
-                          <TableHead className="sticky top-0 bg-background z-10">Estado</TableHead>
-                          <TableHead className="sticky top-0 bg-background z-10">Etapa actual</TableHead>
-                          <TableHead className="sticky top-0 bg-background z-10">Área</TableHead>
-                          <TableHead className="sticky top-0 bg-background z-10">Última actualización</TableHead>
-                          <TableHead className="sticky top-0 bg-background z-10 text-right">Acciones</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredAllSolicitudes
-                          .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-                          .map((sol) => (
-                          <TableRow key={sol.id}>
-                            <TableCell className="font-mono text-sm">{sol.id}</TableCell>
-                            <TableCell className="font-medium">{sol.title}</TableCell>
-                            <TableCell>
-                              <Badge variant={getStatusVariant(sol.state.code)}>
-                                {sol.state.label}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{sol.stage.label}</TableCell>
-                            <TableCell>{sol.area.nombre}</TableCell>
-                            <TableCell>{formatDate(sol.updated_at)}</TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                className="bg-primary hover:bg-primary/90 text-white"
-                                size="sm"
-                                onClick={() => router.push(`/solicitudes/${sol.id}`)}
-                              >
-                                Ver detalle
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                    </div>
-                  ) : (
-                    <div className="flex h-40 items-center justify-center text-muted-foreground">
-                      No se encontraron resultados
-                    </div>
-                  )}
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </>
@@ -1247,7 +1433,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </>
-        ) : (
+        ) : !isDirector ? (
           <Card>
             <CardHeader>
               <CardTitle>Hola, {user.full_name}</CardTitle>
@@ -1259,7 +1445,7 @@ export default function Dashboard() {
               </p>
             </CardContent>
           </Card>
-        )}
+        ) : null}
         </div>
       </div>
       <ToastContainer toasts={toasts} onRemove={removeToast} />

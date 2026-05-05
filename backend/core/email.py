@@ -570,5 +570,209 @@ class EmailService:
         return f"{monday.strftime('%d/%m')} - {sunday.strftime('%d/%m/%Y')}"
 
 
+    # ── Emails de Iniciativas ──────────────────────────────────────────────
+
+    def send_iniciativa_pending_gg_email(
+        self,
+        to_emails: List[str],
+        iniciativa_id: int,
+        iniciativa_titulo: str,
+        director_name: str,
+        producto_propuesto: str,
+    ) -> bool:
+        """Notificar a Gerencia General que hay una iniciativa pendiente"""
+        url = f"{self.frontend_url}/iniciativas/{iniciativa_id}"
+        html_body = f"""
+        <!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+        <body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif;">
+          <div style="max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+            <div style="background:linear-gradient(135deg,#00829a,#006d82);padding:28px 32px;">
+              <h1 style="color:#fff;margin:0;font-size:20px;">Nueva Iniciativa de Producto</h1>
+              <p style="color:#b2e4ed;margin:8px 0 0;font-size:14px;">Pendiente de aprobación Gerencia General</p>
+            </div>
+            <div style="padding:28px 32px;">
+              <p style="color:#333;">Hola,</p>
+              <p style="color:#555;"><strong>{director_name}</strong> ha enviado una nueva iniciativa para su revisión:</p>
+              <div style="background:#f8f9fa;border-left:4px solid #00829a;padding:16px;border-radius:4px;margin:16px 0;">
+                <p style="margin:0 0 8px;font-weight:bold;color:#333;">{iniciativa_titulo}</p>
+                <p style="margin:0;color:#555;font-size:14px;"><strong>Producto propuesto:</strong> {producto_propuesto}</p>
+              </div>
+              <div style="text-align:center;margin:24px 0;">
+                <a href="{url}" style="background:#00829a;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:bold;display:inline-block;">
+                  Ver Iniciativa y Aprobar
+                </a>
+              </div>
+            </div>
+            <div style="background:#f9f9f9;padding:16px 32px;border-top:1px solid #eee;text-align:center;">
+              <p style="color:#999;font-size:12px;margin:0;">Marketing CQ &middot; <span style="color:#00829a;font-weight:bold;">CAFÉ QUINDÍO</span></p>
+            </div>
+          </div>
+        </body></html>
+        """
+        return self.send_email(to_emails, f"[Marketing CQ] Nueva iniciativa pendiente: {iniciativa_titulo}", html_body)
+
+    def send_iniciativa_aprobada_area4_email(
+        self,
+        to_emails: List[str],
+        iniciativa_id: int,
+        iniciativa_titulo: str,
+        producto_propuesto: str,
+        gg_name: str,
+    ) -> bool:
+        """Notificar al Área 4 que deben iniciar el prototipado"""
+        url = f"{self.frontend_url}/iniciativas/{iniciativa_id}"
+        html_body = f"""
+        <!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+        <body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif;">
+          <div style="max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+            <div style="background:linear-gradient(135deg,#96c121,#7aa01a);padding:28px 32px;">
+              <h1 style="color:#fff;margin:0;font-size:20px;">Nuevo Prototipado Requerido</h1>
+              <p style="color:#d8f0a0;margin:8px 0 0;font-size:14px;">Gerencia General aprobó una iniciativa</p>
+            </div>
+            <div style="padding:28px 32px;">
+              <p style="color:#333;">Hola equipo de Bebidas y Pastelería,</p>
+              <p style="color:#555;"><strong>{gg_name}</strong> aprobó la siguiente iniciativa. Deben crear el prototipado:</p>
+              <div style="background:#f8f9fa;border-left:4px solid #96c121;padding:16px;border-radius:4px;margin:16px 0;">
+                <p style="margin:0 0 8px;font-weight:bold;color:#333;">{iniciativa_titulo}</p>
+                <p style="margin:0;color:#555;font-size:14px;"><strong>Producto a prototipado:</strong> {producto_propuesto}</p>
+              </div>
+              <div style="text-align:center;margin:24px 0;">
+                <a href="{url}" style="background:#96c121;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:bold;display:inline-block;">
+                  Ver Detalles e Iniciar Prototipado
+                </a>
+              </div>
+            </div>
+            <div style="background:#f9f9f9;padding:16px 32px;border-top:1px solid #eee;text-align:center;">
+              <p style="color:#999;font-size:12px;margin:0;">Marketing CQ &middot; <span style="color:#00829a;font-weight:bold;">CAFÉ QUINDÍO</span></p>
+            </div>
+          </div>
+        </body></html>
+        """
+        return self.send_email(to_emails, f"[Marketing CQ] Nuevo prototipado requerido: {iniciativa_titulo}", html_body)
+
+    def send_dual_approval_luisa_email(
+        self,
+        to_email: str,
+        iniciativa_id: int,
+        iniciativa_titulo: str,
+    ) -> bool:
+        """Notificar a Luisa Ibañez que debe aprobar el prototipado"""
+        url = f"{self.frontend_url}/iniciativas/{iniciativa_id}"
+        html_body = f"""
+        <!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+        <body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif;">
+          <div style="max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+            <div style="background:linear-gradient(135deg,#00829a,#006d82);padding:28px 32px;">
+              <h1 style="color:#fff;margin:0;font-size:20px;">Aprobación de Prototipado Requerida</h1>
+              <p style="color:#b2e4ed;margin:8px 0 0;font-size:14px;">Control de Calidad</p>
+            </div>
+            <div style="padding:28px 32px;">
+              <p style="color:#333;">Hola Luisa,</p>
+              <p style="color:#555;">El prototipado de la siguiente iniciativa requiere tu aprobación para continuar a Junta Directiva:</p>
+              <div style="background:#f8f9fa;border-left:4px solid #00829a;padding:16px;border-radius:4px;margin:16px 0;">
+                <p style="margin:0;font-weight:bold;color:#333;">{iniciativa_titulo}</p>
+              </div>
+              <div style="text-align:center;margin:24px 0;">
+                <a href="{url}" style="background:#00829a;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:bold;display:inline-block;">
+                  Revisar y Aprobar
+                </a>
+              </div>
+            </div>
+            <div style="background:#f9f9f9;padding:16px 32px;border-top:1px solid #eee;text-align:center;">
+              <p style="color:#999;font-size:12px;margin:0;">Marketing CQ &middot; <span style="color:#00829a;font-weight:bold;">CAFÉ QUINDÍO</span></p>
+            </div>
+          </div>
+        </body></html>
+        """
+        return self.send_email([to_email], f"[Marketing CQ] Aprobación requerida: {iniciativa_titulo}", html_body)
+
+    def send_magic_link_email(
+        self,
+        to_email: str,
+        to_name: str,
+        token: str,
+        iniciativa_id: int,
+        iniciativa_titulo: str,
+        producto_propuesto: str,
+    ) -> bool:
+        """Enviar Magic Link al Gerente de Tiendas (sin necesidad de login)"""
+        approve_url = f"{self.frontend_url}/aprobar/{token}?action=APROBADO"
+        reject_url = f"{self.frontend_url}/aprobar/{token}?action=RECHAZADO"
+        html_body = f"""
+        <!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+        <body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif;">
+          <div style="max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+            <div style="background:linear-gradient(135deg,#333,#555);padding:28px 32px;">
+              <h1 style="color:#fff;margin:0;font-size:20px;">Aprobación de Prototipado</h1>
+              <p style="color:#ccc;margin:8px 0 0;font-size:14px;">Solicitud de validación - Café Quindío</p>
+            </div>
+            <div style="padding:28px 32px;">
+              <p style="color:#333;">Hola {to_name},</p>
+              <p style="color:#555;">Se requiere su validación para el siguiente prototipado de producto:</p>
+              <div style="background:#f8f9fa;border-left:4px solid #96c121;padding:16px;border-radius:4px;margin:16px 0;">
+                <p style="margin:0 0 8px;font-weight:bold;color:#333;">{iniciativa_titulo}</p>
+                <p style="margin:0;color:#555;font-size:14px;"><strong>Producto:</strong> {producto_propuesto}</p>
+              </div>
+              <p style="color:#555;font-size:14px;">Por favor seleccione una de las siguientes opciones:</p>
+              <div style="text-align:center;margin:24px 0;display:flex;gap:16px;justify-content:center;">
+                <a href="{approve_url}"
+                   style="background:#28a745;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:bold;display:inline-block;margin-right:12px;">
+                  ✓ APROBAR
+                </a>
+                <a href="{reject_url}"
+                   style="background:#dc3545;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:bold;display:inline-block;">
+                  ✗ RECHAZAR
+                </a>
+              </div>
+              <p style="color:#999;font-size:12px;text-align:center;">
+                Este enlace es de uso único y expira en 72 horas.<br>
+                No comparta este correo con terceros.
+              </p>
+            </div>
+            <div style="background:#f9f9f9;padding:16px 32px;border-top:1px solid #eee;text-align:center;">
+              <p style="color:#999;font-size:12px;margin:0;">Marketing CQ &middot; <span style="color:#00829a;font-weight:bold;">CAFÉ QUINDÍO</span></p>
+            </div>
+          </div>
+        </body></html>
+        """
+        return self.send_email([to_email], f"[Café Quindío] Validación requerida: {iniciativa_titulo}", html_body)
+
+    def send_jd_pending_email(
+        self,
+        to_emails: List[str],
+        iniciativa_id: int,
+        iniciativa_titulo: str,
+    ) -> bool:
+        """Notificar a Junta Directiva que una iniciativa está lista para aprobación final"""
+        url = f"{self.frontend_url}/iniciativas/{iniciativa_id}"
+        html_body = f"""
+        <!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+        <body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif;">
+          <div style="max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+            <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:28px 32px;">
+              <h1 style="color:#fff;margin:0;font-size:20px;">Iniciativa Lista para Aprobación Final</h1>
+              <p style="color:#aaa;margin:8px 0 0;font-size:14px;">Junta Directiva &middot; Café Quindío</p>
+            </div>
+            <div style="padding:28px 32px;">
+              <p style="color:#333;">Estimada Junta Directiva,</p>
+              <p style="color:#555;">La siguiente iniciativa ha completado el proceso de prototipado y validación. Requiere su aprobación final para proceder:</p>
+              <div style="background:#f8f9fa;border-left:4px solid #96c121;padding:16px;border-radius:4px;margin:16px 0;">
+                <p style="margin:0;font-weight:bold;color:#333;">{iniciativa_titulo}</p>
+              </div>
+              <div style="text-align:center;margin:24px 0;">
+                <a href="{url}" style="background:#1a1a2e;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:bold;display:inline-block;">
+                  Ver Iniciativa
+                </a>
+              </div>
+            </div>
+            <div style="background:#f9f9f9;padding:16px 32px;border-top:1px solid #eee;text-align:center;">
+              <p style="color:#999;font-size:12px;margin:0;">Marketing CQ &middot; <span style="color:#00829a;font-weight:bold;">CAFÉ QUINDÍO</span></p>
+            </div>
+          </div>
+        </body></html>
+        """
+        return self.send_email(to_emails, f"[Marketing CQ] Aprobación final requerida: {iniciativa_titulo}", html_body)
+
+
 # Instancia global del servicio de email
 email_service = EmailService()

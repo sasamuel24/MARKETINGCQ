@@ -25,6 +25,8 @@ from modules.etapas.router import router as etapas_router
 from modules.etapa_aprobadores.router import router as etapa_aprobadores_router
 from modules.solicitudes.router import router as solicitudes_router
 from modules.solicitud_files.router import router as solicitud_files_router
+from modules.iniciativas.router import router as iniciativas_router
+from modules.notificaciones.router import router as notificaciones_router
 
 
 # ── Lifespan: startup / shutdown ──
@@ -74,6 +76,29 @@ app.include_router(etapas_router, prefix=settings.API_PREFIX)
 app.include_router(etapa_aprobadores_router, prefix=settings.API_PREFIX)
 app.include_router(solicitudes_router, prefix=settings.API_PREFIX)
 app.include_router(solicitud_files_router, prefix=settings.API_PREFIX)
+app.include_router(iniciativas_router, prefix=settings.API_PREFIX)
+app.include_router(notificaciones_router, prefix=settings.API_PREFIX)
+
+
+@app.post(
+    f"{settings.API_PREFIX}/token-approval/{{token}}",
+    tags=["Iniciativas"],
+    summary="Aprobar/Rechazar vía Magic Link (sin login)",
+)
+async def token_approval(
+    token: str,
+    action: str,
+    comment: str = "",
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint público para que el Gerente de Tiendas apruebe o rechace
+    un prototipado sin necesidad de iniciar sesión.
+    Acción: APROBADO | RECHAZADO
+    """
+    from modules.iniciativas.service import IniciativaService
+    service = IniciativaService(db)
+    return service.usar_token_aprobacion(token_str=token, action=action, comment=comment or None)
 
 
 @app.get("/", include_in_schema=False)

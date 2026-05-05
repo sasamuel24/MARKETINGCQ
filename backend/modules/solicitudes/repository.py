@@ -2,6 +2,7 @@
 Repositorio para operaciones con solicitudes en la base de datos
 """
 from typing import Optional, List
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
@@ -85,12 +86,12 @@ class SolicitudRepository:
             query = query.join(EtapaAprobador, EtapaAprobador.etapa_id == Solicitud.stage_id)\
                          .filter(EtapaAprobador.user_id == approver_user_id)\
                          .filter(EtapaAprobador.is_active == True)
-            # El usuario 10 (aprobador de café) solo ve solicitudes marcadas como café
+            # Usuario 10: en área 3 (OC) solo ve solicitudes de café; en otras áreas ve todas
             if approver_user_id == 10:
-                query = query.filter(Solicitud.es_para_cafe == True)
-            # El usuario 19 (aprobador de exportación) solo ve solicitudes marcadas como exportación
+                query = query.filter(or_(Solicitud.area_id != 3, Solicitud.es_para_cafe == True))
+            # Usuario 19: en área 3 (OC) solo ve solicitudes de exportación; en otras áreas ve todas
             if approver_user_id == 19:
-                query = query.filter(Solicitud.es_para_exportacion == True)
+                query = query.filter(or_(Solicitud.area_id != 3, Solicitud.es_para_exportacion == True))
         
         return query.order_by(Solicitud.created_at.desc()).offset(skip).limit(limit).all()
     
@@ -128,12 +129,12 @@ class SolicitudRepository:
             query = query.join(EtapaAprobador, EtapaAprobador.etapa_id == Solicitud.stage_id)\
                          .filter(EtapaAprobador.user_id == approver_user_id)\
                          .filter(EtapaAprobador.is_active == True)
-            # El usuario 10 (aprobador de café) solo ve solicitudes marcadas como café
+            # Usuario 10: en área 3 (OC) solo ve solicitudes de café; en otras áreas ve todas
             if approver_user_id == 10:
-                query = query.filter(Solicitud.es_para_cafe == True)
-            # El usuario 19 (aprobador de exportación) solo ve solicitudes marcadas como exportación
+                query = query.filter(or_(Solicitud.area_id != 3, Solicitud.es_para_cafe == True))
+            # Usuario 19: en área 3 (OC) solo ve solicitudes de exportación; en otras áreas ve todas
             if approver_user_id == 19:
-                query = query.filter(Solicitud.es_para_exportacion == True)
+                query = query.filter(or_(Solicitud.area_id != 3, Solicitud.es_para_exportacion == True))
         
         return query.count()
     

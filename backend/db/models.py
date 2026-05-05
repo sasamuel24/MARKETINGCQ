@@ -4,7 +4,7 @@ Repositorio base con operaciones CRUD genéricas y modelos SQLAlchemy
 import enum
 from typing import Generic, TypeVar, Type, Optional, List, Any, Dict
 from sqlalchemy.orm import Session, relationship
-from sqlalchemy import select, update, delete, Column, String, Integer, ForeignKey, Boolean, UniqueConstraint, Index, Enum, Text, BigInteger, CheckConstraint
+from sqlalchemy import select, update, delete, Column, String, Integer, ForeignKey, Boolean, UniqueConstraint, Index, Enum, Text, BigInteger, CheckConstraint, DateTime
 
 from db.base import Base
 
@@ -235,6 +235,7 @@ class Etapa(Base):
     order = Column("order", Integer, nullable=False)  # Especificar nombre de columna explícitamente
     is_active = Column(Boolean, nullable=False, server_default='true')
     approval_mode = Column(Enum(ApprovalMode), nullable=False, server_default='ANY')
+    is_final_stage = Column(Boolean, nullable=False, server_default='false')  # Si True, al completarse marca APROBADO_FINAL sin buscar siguiente etapa
     
     # Relaciones
     area = relationship("Area", back_populates="etapas")
@@ -358,6 +359,132 @@ class EventAction(str, enum.Enum):
     COMMENTED = "COMMENTED"
     STAGE_CHANGED = "STAGE_CHANGED"
     REQUEST_CHANGES = "REQUEST_CHANGES"
+
+
+class IniciativaStatus(str, enum.Enum):
+    BORRADOR = "BORRADOR"
+    PENDIENTE_GG = "PENDIENTE_GG"
+    APROBADA_GG = "APROBADA_GG"
+    RECHAZADA_GG = "RECHAZADA_GG"
+    EN_PROTOTIPADO = "EN_PROTOTIPADO"
+    PENDIENTE_APROBACION_DUAL = "PENDIENTE_APROBACION_DUAL"
+    PENDIENTE_JD = "PENDIENTE_JD"
+    APROBADA_JD = "APROBADA_JD"
+    RECHAZADA_JD = "RECHAZADA_JD"
+
+
+class ApprovalTokenAction(str, enum.Enum):
+    PENDIENTE = "PENDIENTE"
+    APROBADO = "APROBADO"
+    RECHAZADO = "RECHAZADO"
+
+
+class Iniciativa(Base):
+    """
+    Modelo para la tabla de iniciativas de producto (flujo pre-solicitud)
+    """
+    __tablename__ = "iniciativas"
+
+    titulo = Column(String(255), nullable=False)
+    producto_propuesto = Column(Text, nullable=False)
+    analisis_competencia = Column(Text, nullable=True)
+    descripcion = Column(Text, nullable=True)
+    business_case_path = Column(String(500), nullable=True)  # S3 path
+    status = Column(
+        Enum(IniciativaStatus),
+        nullable=False,
+        default=IniciativaStatus.BORRADOR,
+        server_default=IniciativaStatus.BORRADOR.value,
+    )
+
+    # Aprobación dual (prototipado → JD)
+    luisa_approved = Column(Boolean, nullable=False, server_default="false")
+    gerente_tiendas_approved = Column(Boolean, nullable=False, server_default="false")
+
+    # Foreign Keys
+    created_by_user_id = Column(
+        Integer, ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    approved_by_gg_user_id = Column(
+        Integer, ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    # Link a solicitud Área 4 (prototipado)
+    solicitud_id = Column(
+        Integer, ForeignKey("solicitudes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Link a solicitud INNOVACION (generada al final)
+    solicitud_innovacion_id = Column(
+        Integer, ForeignKey("solicitudes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # Relaciones
+    created_by = relationship("User", foreign_keys=[created_by_user_id])
+    approved_by_gg = relationship("User", foreign_keys=[approved_by_gg_user_id])
+    solicitud = relationship("Solicitud", foreign_keys=[solicitud_id])
+    solicitud_innovacion = relationship("Solicitud", foreign_keys=[solicitud_innovacion_id])
+    approval_tokens = relationship("ApprovalToken", back_populates="iniciativa", cascade="all, delete-orphan")
+    notificaciones = relationship("Notificacion", back_populates="iniciativa", cascade="all, delete-orphan")
+
+    def __repr__(self) -> str:
+        return f"<Iniciativa(id={self.id}, titulo='{self.titulo}', status='{self.status}')>"
+
+
+class ApprovalToken(Base):
+    """
+    Token de aprobación sin login (Magic Link) para el Gerente de Tiendas
+    """
+    __tablename__ = "approval_tokens"
+
+    token = Column(String(36), nullable=False, unique=True, index=True)  # UUID
+    iniciativa_id = Column(
+        Integer, ForeignKey("iniciativas.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_name = Column(String(255), nullable=False)
+    user_email = Column(String(255), nullable=False)
+    action = Column(
+        Enum(ApprovalTokenAction),
+        nullable=False,
+        default=ApprovalTokenAction.PENDIENTE,
+        server_default=ApprovalTokenAction.PENDIENTE.value,
+    )
+    comment = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+    # Relaciones
+    iniciativa = relationship("Iniciativa", back_populates="approval_tokens")
+
+    def __repr__(self) -> str:
+        return f"<ApprovalToken(id={self.id}, iniciativa_id={self.iniciativa_id}, action='{self.action}')>"
+
+
+class Notificacion(Base):
+    """
+    Notificaciones internas para usuarios dentro de la plataforma
+    """
+    __tablename__ = "notificaciones"
+
+    user_id = Column(
+        Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tipo = Column(String(50), nullable=False)
+    titulo = Column(String(255), nullable=False)
+    mensaje = Column(Text, nullable=False)
+    leida = Column(Boolean, nullable=False, server_default="false")
+    iniciativa_id = Column(
+        Integer, ForeignKey("iniciativas.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    solicitud_id = Column(
+        Integer, ForeignKey("solicitudes.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
+    # Relaciones
+    user = relationship("User", foreign_keys=[user_id])
+    iniciativa = relationship("Iniciativa", back_populates="notificaciones")
+    solicitud = relationship("Solicitud", foreign_keys=[solicitud_id])
+
+    def __repr__(self) -> str:
+        return f"<Notificacion(id={self.id}, user_id={self.user_id}, tipo='{self.tipo}', leida={self.leida})>"
 
 
 class SolicitudEvento(Base):

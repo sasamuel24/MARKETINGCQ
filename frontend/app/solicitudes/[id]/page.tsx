@@ -131,6 +131,12 @@ export default function SolicitudDetailPage() {
   // IDs de aprobadores registrados para la etapa actual
   const [currentStageApproverIds, setCurrentStageApproverIds] = useState<number[]>([]);
 
+  // Edición inline (INNOVACION area_id=2)
+  const [editMode, setEditMode] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
   useEffect(() => {
     const token = localStorage.getItem("access_token");
     if (!token) {
@@ -387,8 +393,12 @@ export default function SolicitudDetailPage() {
     setSubmittingAprobar(true);
     const token = localStorage.getItem("access_token");
 
-    // Área 4: creador usa cerrar-diagnostico; aprobador registrado usa /aprobar (con lógica multi-aprobador)
-    const endpoint = solicitud?.area.id === 4 && !isApprover
+    // Determinar endpoint correcto según rol y área:
+    // - Creador en área 4 o área 2 (INNOVACION): cerrar-diagnostico (avanza y notifica)
+    // - Aprobador registrado en etapa_aprobadores: /aprobar (lógica multi-aprobador)
+    const isRegisteredApprover = currentStageApproverIds.includes(parseInt(user?.id ?? "0"));
+    const creadorActivando = !isRegisteredApprover && (solicitud?.area.id === 4 || solicitud?.area.id === 2);
+    const endpoint = creadorActivando
       ? `${API_URL}/api/v1/solicitudes/${solicitudId}/cerrar-diagnostico`
       : `${API_URL}/api/v1/solicitudes/${solicitudId}/aprobar`;
 
@@ -506,7 +516,9 @@ export default function SolicitudDetailPage() {
     );
   }
 
-  const isCreator = user?.id === solicitud.created_by.id.toString();
+  // isCreator: es el creador exacto de la solicitud O es CREATOR del área de la solicitud (para INNOVACION)
+  const isCreator = user?.id === solicitud.created_by.id.toString() ||
+    (user?.rol_id === 2 && user?.area_id === solicitud.area.id);
   const isApprover = user?.role === "APPROVER" || user?.rol_id === 3;
   const isAjustesSolicitados = solicitud.state.code === "AJUSTES_SOLICITADOS" || 
                                 solicitud.state.label === "Ajustes solicitados";
@@ -605,10 +617,11 @@ export default function SolicitudDetailPage() {
       (e) => e.action === "APPROVED" && e.actor.id.toString() === user?.id
     );
 
-    // Creador: puede "Cerrar Diagnóstico" para enviar al aprobador (siempre que no esté en estado terminal ni ajustes pendientes)
-    // Aprobador de la etapa actual: puede aprobar mientras no haya ya aprobado
+    // Creador: puede "Cerrar Diagnóstico" para enviar al aprobador (PROD_E1 y PROD_E2)
+    // Aprobador PROD_E3: puede aprobar/avanzar (Mariana, Ana María)
+    // Aprobadores PROD_E2 (Luisa): su aprobación llega via la iniciativa (aprobación dual), NO via la solicitud
     const canCerrar = !isAprobadoFinal && !isRechazado &&
-      (isCreator || (isCurrentStageApprover && !alreadyApprovedCurrentStage && !isAjustesSolicitados));
+      (isCreator || (isCurrentStageApprover && solicitud.stage.code === "PROD_E3" && !alreadyApprovedCurrentStage && !isAjustesSolicitados));
 
     const getDocTypeLabel = (docType: string) => {
       if (docType === "ARTE")        return "Hoja de Producto";
@@ -1095,8 +1108,8 @@ export default function SolicitudDetailPage() {
             </button>
           )}
 
-          {/* Solicitar ajustes / Rechazar (aprobadores de la etapa actual — oculto en PROD_E3 "Filtro por Gerencias") */}
-          {isCurrentStageApprover && !alreadyApprovedCurrentStage && !isAjustesSolicitados && !isAprobadoFinal && !isRechazado && solicitud.stage.code !== "PROD_E3" && (
+          {/* Solicitar ajustes / Rechazar solo en PROD_E3 para aprobadores (Mariana, Ana María) */}
+          {isCurrentStageApprover && !alreadyApprovedCurrentStage && !isAjustesSolicitados && !isAprobadoFinal && !isRechazado && solicitud.stage.code === "PROD_E3" && (
             <div className="flex gap-3">
               <button
                 onClick={() => setShowAjustesDialog(true)}
@@ -1111,6 +1124,13 @@ export default function SolicitudDetailPage() {
               >
                 Rechazar
               </button>
+            </div>
+          )}
+
+          {/* Mensaje para aprobadores PROD_E2: la aprobación llega vía la iniciativa */}
+          {isCurrentStageApprover && solicitud.stage.code === "PROD_E2" && !isAprobadoFinal && !isRechazado && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-700 text-center">
+              La aprobación de esta etapa se gestiona a través de la iniciativa vinculada (aprobación dual). Cuando tanto Luisa como el Gerente de Tiendas aprueben, la solicitud avanzará automáticamente.
             </div>
           )}
 
@@ -1300,6 +1320,445 @@ export default function SolicitudDetailPage() {
               }}>
                 Cerrar
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <ToastContainer toasts={toasts} onRemove={removeToast} />
+      </div>
+    );
+  }
+  // ─────────────────────────────────────────────────────────────
+  // INNOVACION (area_id = 2) – Vista edición + carga de archivos
+  // ─────────────────────────────────────────────────────────────
+  if (solicitud.area.id === 2) {
+    const isCurrentStageApprover = user ? currentStageApproverIds.includes(parseInt(user.id)) : false;
+    const alreadyApprovedCurrentStage = userAlreadyApproved;
+    const isPreparacion = solicitud.stage.code === "INNO_E0"; // Etapa inicial: Juliana edita y activa
+    // Puede editar/subir archivos: en preparación inicial O cuando hay ajustes solicitados
+    const canEdit = !isAprobadoFinal && !isRechazado && isCreator && (isPreparacion || isAjustesSolicitados);
+    // Puede enviar/re-enviar: en preparación con archivos, O tras ajustes con archivos
+    const canActivar = isCreator && !isAprobadoFinal && !isRechazado &&
+      solicitud.files.length > 0 && (isPreparacion || isAjustesSolicitados);
+    // Puede aprobar/ajustar/rechazar: aprobador de la etapa actual que no haya aprobado ya
+    const canAprobarInno = isCurrentStageApprover && !alreadyApprovedCurrentStage && !isAprobadoFinal && !isRechazado && !isAjustesSolicitados;
+    const canAjustesInno = isCurrentStageApprover && !alreadyApprovedCurrentStage && !isAprobadoFinal && !isRechazado;
+
+    const handleSaveEdit = async () => {
+      if (!editTitle.trim()) return;
+      setSavingEdit(true);
+      const token = localStorage.getItem("access_token");
+      try {
+        const res = await fetch(`${API_URL}/api/v1/solicitudes/${solicitudId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ title: editTitle.trim(), description: editDescription.trim() || null }),
+        });
+        if (!res.ok) throw new Error("Error al guardar");
+        const updated = await res.json();
+        setSolicitud(updated);
+        setEditMode(false);
+        showToast("Cambios guardados correctamente");
+      } catch {
+        showToast("Error al guardar los cambios", "error");
+      } finally {
+        setSavingEdit(false);
+      }
+    };
+
+    return (
+      <div className="min-h-screen" style={{ background: "#daeef0" }}>
+        <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-4">
+
+          {/* Volver */}
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 w-fit"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Volver
+          </button>
+
+          {/* Header */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-mono text-gray-400 mb-1 block">Solicitud #{solicitud.id}</span>
+                {editMode ? (
+                  <input
+                    className="w-full text-lg font-bold border-b-2 border-[#00829a] outline-none bg-transparent pb-1"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    maxLength={255}
+                    autoFocus
+                  />
+                ) : (
+                  <h1 className="text-lg font-bold text-gray-900 leading-tight">{solicitud.title}</h1>
+                )}
+              </div>
+              <span className={`shrink-0 mt-1 inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold
+                ${isAprobadoFinal ? "bg-green-100 text-green-700 border-green-200"
+                  : isRechazado ? "bg-red-100 text-red-700 border-red-200"
+                  : isAjustesSolicitados ? "bg-amber-100 text-amber-700 border-amber-200"
+                  : "bg-blue-100 text-blue-700 border-blue-200"}`}
+              >
+                {solicitud.state.label}
+              </span>
+            </div>
+
+            {/* Descripción */}
+            <div className="mb-3">
+              <p className="text-xs font-semibold text-gray-500 mb-1">Descripción</p>
+              {editMode ? (
+                <textarea
+                  className="w-full text-sm border rounded-xl px-3 py-2 outline-none focus:border-[#00829a] resize-none"
+                  rows={4}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  maxLength={1000}
+                  placeholder="Describe el alcance de esta solicitud de innovación..."
+                />
+              ) : (
+                <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                  {solicitud.description || <span className="italic text-gray-400">Sin descripción</span>}
+                </p>
+              )}
+            </div>
+
+            {/* Info chips */}
+            <div className="flex flex-wrap gap-2 text-xs text-gray-500 border-t pt-3 mt-2">
+              <span className="flex items-center gap-1"><Building2 className="h-3.5 w-3.5" />{solicitud.area.nombre}</span>
+              <span className="flex items-center gap-1"><Workflow className="h-3.5 w-3.5" />{solicitud.stage.label}</span>
+              <span className="flex items-center gap-1"><User className="h-3.5 w-3.5" />{solicitud.created_by.full_name}</span>
+              <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{formatDate(solicitud.updated_at)}</span>
+            </div>
+
+            {/* Botones edición */}
+            {canEdit && (
+              <div className="mt-4 flex gap-2 justify-end">
+                {editMode ? (
+                  <>
+                    <button
+                      onClick={() => setEditMode(false)}
+                      className="px-4 py-2 text-sm rounded-xl border border-gray-300 text-gray-600 hover:bg-gray-50"
+                      disabled={savingEdit}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={savingEdit || !editTitle.trim()}
+                      className="px-4 py-2 text-sm rounded-xl text-white font-semibold disabled:opacity-50"
+                      style={{ background: "#00829a" }}
+                    >
+                      {savingEdit ? "Guardando..." : "Guardar cambios"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => { setEditTitle(solicitud.title); setEditDescription(solicitud.description || ""); setEditMode(true); }}
+                    className="px-4 py-2 text-sm rounded-xl border font-medium"
+                    style={{ borderColor: "#00829a", color: "#00829a" }}
+                  >
+                    Editar título y descripción
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Archivos adjuntos */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-gray-800">Archivos adjuntos</h2>
+              {canEdit && (
+                <button
+                  onClick={() => setShowUploadPanel((v) => !v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl text-white font-medium"
+                  style={{ background: "#00829a" }}
+                >
+                  <Upload className="h-4 w-4" />
+                  {showUploadPanel ? "Cancelar" : "Subir archivos"}
+                </button>
+              )}
+            </div>
+
+            {/* Panel subida */}
+            {showUploadPanel && (
+              <div className="mb-4 rounded-xl border-2 border-dashed border-[#00829a]/40 bg-[#00829a]/5 p-4">
+                <div className="mb-3">
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Tipo de documento</label>
+                  <select
+                    value={uploadDocType}
+                    onChange={(e) => setUploadDocType(e.target.value as "ARTE" | "EVIDENCIA" | "CONSOLIDADO")}
+                    className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-[#00829a]"
+                  >
+                    <option value="ARTE">Arte / Diseño principal</option>
+                    <option value="EVIDENCIA">Evidencia / Soporte</option>
+                    <option value="CONSOLIDADO">Consolidado versión final</option>
+                  </select>
+                </div>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf"
+                  id="inn-file-input"
+                  className="hidden"
+                  onChange={(e) => setUploadFiles(Array.from(e.target.files || []))}
+                />
+                <button
+                  onClick={() => document.getElementById("inn-file-input")?.click()}
+                  className="w-full py-2 text-sm rounded-lg border border-[#00829a] text-[#00829a] font-medium hover:bg-[#00829a]/10 mb-2"
+                >
+                  Seleccionar archivos
+                </button>
+                {uploadFiles.length > 0 && (
+                  <div className="flex flex-col gap-1 mb-3">
+                    {uploadFiles.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs bg-white rounded-lg px-3 py-2 border">
+                        <span className="truncate">{f.name}</span>
+                        <button onClick={() => setUploadFiles((prev) => prev.filter((_, j) => j !== i))}>
+                          <X className="h-3.5 w-3.5 text-gray-400 hover:text-red-500" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={handleUploadNewFiles}
+                  disabled={uploading || uploadFiles.length === 0}
+                  className="w-full py-2 text-sm rounded-xl text-white font-semibold disabled:opacity-50"
+                  style={{ background: "#00829a" }}
+                >
+                  {uploading ? "Subiendo..." : `Subir ${uploadFiles.length} archivo(s)`}
+                </button>
+              </div>
+            )}
+
+            {/* Lista archivos existentes */}
+            {solicitud.files.length === 0 ? (
+              <div className="py-8 flex flex-col items-center gap-2 text-center text-gray-400">
+                <FileText className="h-10 w-10 opacity-40" />
+                <p className="text-sm">No hay archivos adjuntos</p>
+                <p className="text-xs">Sube los archivos para poder activar el flujo de aprobación</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {solicitud.files.map((file) => (
+                  <div key={file.id} className="flex items-center justify-between rounded-xl border px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <FileText className="h-5 w-5 text-[#00829a] shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{file.filename}</p>
+                        <p className="text-xs text-gray-400">{file.doc_type} · {formatFileSize(file.size_bytes)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handlePreviewFile(file.id, file.filename, file.content_type)}
+                        className="p-1.5 rounded-lg hover:bg-gray-200"
+                        title="Vista previa"
+                      >
+                        <Eye className="h-4 w-4 text-gray-500" />
+                      </button>
+                      <button
+                        onClick={() => handleDownloadFile(file.id, file.filename)}
+                        className="p-1.5 rounded-lg hover:bg-gray-200"
+                        title="Descargar"
+                      >
+                        <Download className="h-4 w-4 text-gray-500" />
+                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => setConfirmDeleteFileId(file.id)}
+                          className="p-1.5 rounded-lg hover:bg-red-100"
+                          title="Eliminar"
+                        >
+                          <X className="h-4 w-4 text-red-400" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Historial de eventos */}
+          {eventos.length > 0 && (
+            <div className="bg-white rounded-2xl p-5 shadow-sm">
+              <h2 className="font-bold text-gray-800 mb-4">Historial</h2>
+              <div className="flex flex-col gap-3">
+                {eventos.map((ev) => (
+                  <div key={ev.id} className="flex items-start gap-3 text-sm">
+                    <div className="mt-0.5 h-2 w-2 rounded-full bg-[#00829a] shrink-0 mt-1.5" />
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium">{ev.actor?.full_name}</span>
+                      <span className="text-gray-500 ml-1">
+                        {ev.action === "APPROVED" ? `aprobó en ${ev.stage?.label}` :
+                         ev.action === "REJECTED" ? "rechazó la solicitud" :
+                         ev.action === "REQUEST_CHANGES" ? "solicitó ajustes" :
+                         ev.action === "COMMENTED" ? "comentó" :
+                         ev.action === "SUBMITTED" ? "activó el flujo" : ev.action}
+                      </span>
+                      {ev.comment && <p className="text-gray-500 text-xs mt-0.5 truncate">{ev.comment}</p>}
+                    </div>
+                    <span className="text-xs text-gray-400 shrink-0">{formatDate(ev.created_at)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── CREADOR: Enviar / Re-enviar con ajustes ── */}
+          {canActivar && (
+            <button
+              onClick={() => setShowAprobarDialog(true)}
+              className="w-full py-4 font-bold text-base text-white rounded-2xl shadow-lg"
+              style={{ background: isAjustesSolicitados ? "#b45309" : "#00829a" }}
+            >
+              {isAjustesSolicitados
+                ? "Re-enviar con ajustes realizados"
+                : "Enviar para revisión de la Directora"}
+            </button>
+          )}
+          {isCreator && (isPreparacion || isAjustesSolicitados) && !isAprobadoFinal && !isRechazado && solicitud.files.length === 0 && (
+            <div className="text-center text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+              Sube al menos un archivo para {isAjustesSolicitados ? "re-enviar" : "enviar a revisión"}
+            </div>
+          )}
+
+          {/* ── APROBADOR (Directora / Luisa / Adrian): Botones de acción ── */}
+          {canAprobarInno && (
+            <button
+              onClick={() => setShowAprobarDialog(true)}
+              className="w-full py-4 font-bold text-base text-white rounded-2xl shadow-lg"
+              style={{ background: "#00829a" }}
+            >
+              Dar visto bueno — Aprobar y avanzar
+            </button>
+          )}
+          {canAjustesInno && (
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowAjustesDialog(true)}
+                className="flex-1 py-3 font-semibold text-sm rounded-2xl border-2 transition-colors"
+                style={{ borderColor: "#00829a", color: "#00829a" }}
+              >
+                Solicitar ajustes
+              </button>
+              <button
+                onClick={() => setShowRechazarDialog(true)}
+                className="flex-1 py-3 font-semibold text-sm rounded-2xl border-2 border-red-400 text-red-500"
+              >
+                Rechazar
+              </button>
+            </div>
+          )}
+          {isCurrentStageApprover && alreadyApprovedCurrentStage && !isAprobadoFinal && !isRechazado && (
+            <div className="bg-white rounded-2xl p-4 text-sm text-gray-500 text-center shadow-sm">
+              Tu aprobación ha sido registrada. La solicitud avanzará cuando todos los aprobadores hayan dado su visto bueno.
+            </div>
+          )}
+          {isAjustesSolicitados && isCreator && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800 text-center">
+              Se han solicitado ajustes. Revisa el historial, actualiza la descripción o archivos. El aprobador recibirá la notificación automáticamente.
+            </div>
+          )}
+          {!isCurrentStageApprover && !isCreator && !isAprobadoFinal && !isRechazado && (
+            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm text-gray-500 text-center">
+              Esta solicitud está siendo revisada en la etapa <strong>{solicitud.stage.label}</strong>.
+            </div>
+          )}
+
+          {isAprobadoFinal && (
+            <div className="rounded-2xl p-4 text-sm font-semibold text-center" style={{ background: "#1a5c38", color: "white" }}>
+              Solicitud aprobada en todas las etapas
+            </div>
+          )}
+          {isRechazado && (
+            <div className="rounded-2xl p-4 text-sm font-semibold text-center bg-red-50 text-red-600 border border-red-200">
+              Solicitud rechazada. Revisa el historial.
+            </div>
+          )}
+        </div>
+
+        {/* Confirm delete */}
+        <Dialog open={!!confirmDeleteFileId} onOpenChange={() => setConfirmDeleteFileId(null)}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle>Eliminar archivo</DialogTitle>
+              <DialogDescription>¿Seguro que deseas eliminar este archivo? Esta acción no se puede deshacer.</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmDeleteFileId(null)}>Cancelar</Button>
+              <Button variant="destructive" onClick={() => confirmDeleteFileId && handleDeleteFile(confirmDeleteFileId)} disabled={!!deletingFileId}>
+                {deletingFileId ? "Eliminando..." : "Eliminar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Aprobar / Activar flujo dialog */}
+        <Dialog open={showAprobarDialog} onOpenChange={setShowAprobarDialog}>
+          <DialogContent className="sm:max-w-[525px]">
+            <DialogHeader>
+              <DialogTitle>
+                {isPreparacion ? "Enviar para revisión" : `Dar visto bueno — ${solicitud.stage.label}`}
+              </DialogTitle>
+              <DialogDescription>
+                {isPreparacion
+                  ? "La solicitud será enviada a la Directora para su revisión y visto bueno."
+                  : "La solicitud avanzará a la siguiente etapa."}
+                {" "}Opcionalmente puedes agregar un comentario.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label>Comentario (opcional)</Label>
+                <Textarea
+                  placeholder={isCurrentStageApprover ? "Ej: Revisado y aprobado para continuar..." : "Ej: Solicitud lista para revisión..."}
+                  value={aprobarComment}
+                  onChange={(e) => setAprobarComment(e.target.value)}
+                  rows={3}
+                  className="resize-none"
+                  disabled={submittingAprobar}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setShowAprobarDialog(false); setAprobarComment(""); }} disabled={submittingAprobar}>
+                Cancelar
+              </Button>
+              <Button onClick={handleAprobar} disabled={submittingAprobar} style={{ background: "#00829a" }}>
+                {submittingAprobar ? "Enviando..." : "Activar flujo"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Preview dialog */}
+        <Dialog open={showPreviewDialog} onOpenChange={(open) => {
+          setShowPreviewDialog(open);
+          if (!open) { if (previewFile) window.URL.revokeObjectURL(previewFile.url); setPreviewFile(null); setImageError(false); }
+        }}>
+          <DialogContent className="sm:max-w-[90vw] max-h-[90vh] overflow-auto">
+            <DialogHeader>
+              <DialogTitle>{previewFile?.filename}</DialogTitle>
+            </DialogHeader>
+            <div className="flex items-center justify-center p-4 min-h-[400px]">
+              {loadingPreview ? (
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00829a]" />
+              ) : previewFile?.type.startsWith("image/") ? (
+                <img src={previewFile.url} alt={previewFile.filename} className="max-w-full max-h-[70vh] object-contain rounded-lg" />
+              ) : previewFile?.type === "application/pdf" ? (
+                <iframe src={previewFile.url} className="w-full h-[70vh] rounded-lg border" title={previewFile.filename} />
+              ) : (
+                <div className="text-center text-muted-foreground"><FileText className="h-16 w-16 mx-auto mb-4 opacity-50" /><p>Sin vista previa</p></div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setShowPreviewDialog(false); if (previewFile) window.URL.revokeObjectURL(previewFile.url); setPreviewFile(null); }}>Cerrar</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

@@ -129,7 +129,8 @@ async def get_solicitud(
     solicitud = service.get_solicitud_by_id(solicitud_id)
 
     if current_user.rol_id == CREATOR_ROLE_ID:
-        if solicitud.created_by.id != current_user.id or solicitud.area.id != current_user.area_id:
+        # Acceso permitido si: creó la solicitud O pertenece a su área
+        if solicitud.created_by.id != current_user.id and solicitud.area.id != current_user.area_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes acceso a esta solicitud"

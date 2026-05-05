@@ -1,6 +1,7 @@
 """
 Servicio de solicitudes - Lógica de negocio
 """
+import logging
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -12,8 +13,11 @@ from modules.areas.repository import AreaRepository
 from modules.etapas.repository import EtapaRepository
 from modules.estados.repository import EstadoRepository
 from modules.usuarios.repository import UserRepository
+from modules.notificaciones.repository import NotificacionRepository
 from core.email import email_service
 from core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class SolicitudService:
@@ -25,6 +29,7 @@ class SolicitudService:
         self.etapa_repository = EtapaRepository(db)
         self.estado_repository = EstadoRepository(db)
         self.user_repository = UserRepository(db)
+        self.notif_repository = NotificacionRepository(db)
     
     def get_solicitud_by_id(self, solicitud_id: int) -> SolicitudDetailResponse:
         """
@@ -376,7 +381,17 @@ class SolicitudService:
                 comment=comment,
                 reviewer_name=revisor.full_name if revisor else "Revisor"
             )
-        
+
+        # Notificación in-app al creador
+        revisor_nombre = revisor.full_name if revisor else "Un revisor"
+        self.notif_repository.create(
+            user_id=solicitud.created_by_user_id,
+            tipo="AJUSTES_SOLICITADOS",
+            titulo="Se solicitaron ajustes en tu propuesta",
+            mensaje=revisor_nombre + " solicito ajustes en \"" + solicitud.title + "\". Revisa el historial y re-envia.",
+            solicitud_id=solicitud_id,
+        )
+
         # Recargar con relaciones
         solicitud_actualizada = self.repository.get_by_id(solicitud_id, include_relations=True)
         
@@ -492,18 +507,20 @@ class SolicitudService:
         
         etapa_actual = self.etapa_repository.get_by_id(solicitud.stage_id)
         etapa_actual_id = solicitud.stage_id  # Guardar el ID de la etapa donde se aprobó
-        
+        es_produccion = solicitud.area_id == 4  # Los filtros café/exportación solo aplican en área 4
+
         # Verificar si la etapa actual requiere aprobación de TODOS (approval_mode: "ALL")
         if etapa_actual.approval_mode == "ALL":
-            # Contar cuántos aprobadores hay en esta etapa
-            # El usuario 10 (aprobador de café) solo cuenta si la solicitud es para café
+            # Contar cuántos aprobadores hay en esta etapa.
+            # Los filtros de café/exportación (user 10 / user 19) solo aplican en área 4 (PRODUCCION).
+            # Para INNOVACION (area 2) y cualquier otro área, todos los aprobadores cuentan.
             aprobadores_etapa = self.repository.db.query(EtapaAprobador)\
                 .filter(EtapaAprobador.etapa_id == solicitud.stage_id)\
                 .all()
             total_aprobadores = sum(
                 1 for a in aprobadores_etapa
-                if not (a.user_id == 10 and not solicitud.es_para_cafe)
-                and not (a.user_id == 19 and not solicitud.es_para_exportacion)
+                if not (es_produccion and a.user_id == 10 and not solicitud.es_para_cafe)
+                and not (es_produccion and a.user_id == 19 and not solicitud.es_para_exportacion)
             )
             
             # Contar cuántos ya aprobaron (incluyendo esta aprobación)
@@ -533,20 +550,24 @@ class SolicitudService:
                 return SolicitudDetailResponse.model_validate(solicitud_actualizada)
         
         # Si llegamos aquí, podemos avanzar (o es approval_mode: "ANY" o todos ya aprobaron)
-        siguiente_etapa = self.repository.db.query(Etapa)\
-            .filter(
-                Etapa.area_id == solicitud.area_id,
-                Etapa.order == etapa_actual.order + 1
-            )\
-            .first()
-        
+        # Si la etapa actual está marcada como final, finalizar sin buscar siguiente etapa
+        if getattr(etapa_actual, 'is_final_stage', False):
+            siguiente_etapa = None
+        else:
+            siguiente_etapa = self.repository.db.query(Etapa)\
+                .filter(
+                    Etapa.area_id == solicitud.area_id,
+                    Etapa.order == etapa_actual.order + 1
+                )\
+                .first()
+
         # Determinar el nuevo estado y etapa
         if siguiente_etapa:
             # Hay más etapas: avanzar a la siguiente y mantener EN_REVISION
             nuevo_estado_id = 1  # EN_REVISION
             nueva_etapa_id = siguiente_etapa.id
         else:
-            # No hay más etapas: marcar como APROBADO_FINAL
+            # No hay más etapas (o etapa marcada como final): APROBADO_FINAL
             nuevo_estado_id = 4  # APROBADO_FINAL
             nueva_etapa_id = solicitud.stage_id  # Mantener en la última etapa
         
@@ -574,40 +595,69 @@ class SolicitudService:
         
         # Enviar notificación al creador
         creador = self.user_repository.get_by_id(solicitud.created_by_user_id)
+        aprobador_nombre = aprobador_user.full_name if aprobador_user else "Aprobador"
+        is_final = (nuevo_estado_id == 4)
         if creador and creador.email:
             email_service.send_approval_notification_to_creator(
                 to_email=creador.email,
                 solicitud_id=solicitud.id,
                 solicitud_title=solicitud.title,
-                approver_name=aprobador_user.full_name if aprobador_user else "Aprobador",
+                approver_name=aprobador_nombre,
                 stage_name=etapa_actual.label,
-                is_final=(nuevo_estado_id == 4)
+                is_final=is_final
             )
-        
+
+        # Notificación in-app al creador sobre el avance
+        if is_final:
+            self.notif_repository.create(
+                user_id=solicitud.created_by_user_id,
+                tipo="SOLICITUD_APROBADA_FINAL",
+                titulo="Tu propuesta fue aprobada definitivamente",
+                mensaje="\"" + solicitud.title + "\" fue aprobada en todas las etapas. Felicidades!",
+                solicitud_id=solicitud_id,
+            )
+        else:
+            self.notif_repository.create(
+                user_id=solicitud.created_by_user_id,
+                tipo="SOLICITUD_APROBADA_ETAPA",
+                titulo="Tu propuesta avanzo de etapa",
+                mensaje=aprobador_nombre + " aprobo \"" + solicitud.title + "\" en la etapa " + etapa_actual.label + ".",
+                solicitud_id=solicitud_id,
+            )
+
         # Si hay siguiente etapa, notificar a los nuevos aprobadores
         if siguiente_etapa:
             # Obtener aprobadores de la nueva etapa
             nuevos_aprobadores = self.repository.db.query(EtapaAprobador)\
                 .filter(EtapaAprobador.etapa_id == siguiente_etapa.id)\
                 .all()
-            
-            # Obtener emails de los aprobadores (excluir usuarios del resumen semanal)
-            emails_aprobadores = []
+
+            # Notificar a cada aprobador de la siguiente etapa individualmente
+            creador_nombre = creador.full_name if creador else "Creador"
             for aprobador_rel in nuevos_aprobadores:
                 if aprobador_rel.user_id in settings.WEEKLY_SUMMARY_USER_IDS:
                     continue  # Este usuario solo recibe el resumen semanal
-                user = self.user_repository.get_by_id(aprobador_rel.user_id)
-                if user and user.email:
-                    emails_aprobadores.append(user.email)
-            
-            # Enviar notificación a los nuevos aprobadores
-            if emails_aprobadores:
-                email_service.send_approval_notification(
-                    to_emails=emails_aprobadores,
-                    solicitud_id=solicitud.id,
-                    solicitud_title=solicitud.title,
-                    stage_name=siguiente_etapa.label,
-                    creator_name=creador.full_name if creador else "Creador"
+                # Filtros de café/exportación solo aplican en área 4 (PRODUCCION)
+                if es_produccion and aprobador_rel.user_id == 10 and not solicitud.es_para_cafe:
+                    continue
+                if es_produccion and aprobador_rel.user_id == 19 and not solicitud.es_para_exportacion:
+                    continue
+                aprobador_user = self.user_repository.get_by_id(aprobador_rel.user_id)
+                if aprobador_user and aprobador_user.email:
+                    email_service.send_approval_notification(
+                        to_emails=[aprobador_user.email],
+                        solicitud_id=solicitud.id,
+                        solicitud_title=solicitud.title,
+                        stage_name=siguiente_etapa.label,
+                        creator_name=creador_nombre,
+                    )
+                # Notificación in-app
+                self.notif_repository.create(
+                    user_id=aprobador_rel.user_id,
+                    tipo="SOLICITUD_ENVIADA",
+                    titulo="Nueva propuesta para revisar: " + solicitud.title,
+                    mensaje="La propuesta \"" + solicitud.title + "\" llego a la etapa " + siguiente_etapa.label + " y requiere tu aprobacion.",
+                    solicitud_id=solicitud_id,
                 )
         
         # Retornar la solicitud actualizada con relaciones
@@ -692,16 +742,50 @@ class SolicitudService:
                 emails_aprobadores.append(user.email)
 
         creador = self.user_repository.get_by_id(actor_user_id)
+        creador_nombre = creador.full_name if creador else "El creador"
         if emails_aprobadores:
             email_service.send_approval_notification(
                 to_emails=emails_aprobadores,
                 solicitud_id=solicitud.id,
                 solicitud_title=solicitud.title,
                 stage_name=etapa_notificacion.label,
-                creator_name=creador.full_name if creador else "Creador",
+                creator_name=creador_nombre,
+            )
+
+        # Notificaciones in-app a los aprobadores de la etapa destino
+        accion = "re-envio con ajustes" if hubo_ajuste_en_etapa_actual else "envio para revision"
+        for aprobador_rel in aprobadores_etapa:
+            self.notif_repository.create(
+                user_id=aprobador_rel.user_id,
+                tipo="SOLICITUD_ENVIADA",
+                titulo="Nueva propuesta para revisar: " + solicitud.title,
+                mensaje=creador_nombre + " " + accion + " la propuesta en la etapa " + etapa_notificacion.label + ". Revisa y da tu visto bueno.",
+                solicitud_id=solicitud_id,
             )
 
         solicitud_actualizada = self.repository.get_by_id(solicitud_id, include_relations=True)
+
+        # ── Auto-iniciar aprobación dual si la solicitud está vinculada a una Iniciativa ──
+        try:
+            from db.models import Iniciativa, IniciativaStatus
+            from modules.iniciativas.service import IniciativaService
+            iniciativa = (
+                self.repository.db.query(Iniciativa)
+                .filter(Iniciativa.solicitud_id == solicitud_id)
+                .first()
+            )
+            if iniciativa and iniciativa.status in (
+                IniciativaStatus.APROBADA_GG,
+                IniciativaStatus.EN_PROTOTIPADO,
+            ):
+                # Crear un actor ficticio usando el propio creador de la iniciativa
+                actor = self.user_repository.get_by_id(actor_user_id)
+                ini_service = IniciativaService(self.repository.db)
+                ini_service.iniciar_aprobacion_dual(iniciativa.id, actor)
+        except Exception as _e:
+            # No bloquear el flujo de solicitudes si algo falla en iniciativas
+            logger.warning(f"No se pudo iniciar aprobacion dual para solicitud {solicitud_id}: {_e}")
+
         return SolicitudDetailResponse.model_validate(solicitud_actualizada)
 
     def comentar_solicitud(self, solicitud_id: int, comment: str, actor_user_id: int, categoria: str = "feedback") -> dict:
@@ -810,15 +894,25 @@ class SolicitudService:
         # Enviar notificación al creador
         creador = self.user_repository.get_by_id(solicitud.created_by_user_id)
         revisor = self.user_repository.get_by_id(actor_user_id)
+        revisor_nombre = revisor.full_name if revisor else "Un revisor"
         if creador and creador.email:
             email_service.send_rejection_notification(
                 to_email=creador.email,
                 solicitud_id=solicitud.id,
                 solicitud_title=solicitud.title,
                 comment=comment,
-                reviewer_name=revisor.full_name if revisor else "Revisor"
+                reviewer_name=revisor_nombre
             )
-        
+
+        # Notificación in-app al creador
+        self.notif_repository.create(
+            user_id=solicitud.created_by_user_id,
+            tipo="SOLICITUD_RECHAZADA",
+            titulo="Tu propuesta fue rechazada",
+            mensaje=revisor_nombre + " rechazo la propuesta \"" + solicitud.title + "\". Revisa el historial para ver el motivo.",
+            solicitud_id=solicitud_id,
+        )
+
         # Retornar la solicitud actualizada con relaciones
         solicitud_actualizada = self.repository.get_by_id(solicitud_id, include_relations=True)
         return SolicitudDetailResponse.model_validate(solicitud_actualizada)
